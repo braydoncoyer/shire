@@ -84,17 +84,17 @@ export function makeGroundNoiseTexture(size = 256) {
   return dataTex(data, size, size);
 }
 
-/** R: gravel lane coverage, G: stream bed, over the inner region. */
+/** R: gravel lane coverage, G: stream bed, B: hobbit-hole yards, A: beds (1 flowers, 0.5 vegetables). */
 export function makeLaneTexture() {
-  const { n, dist, width, stream } = LANE_TEXTURE;
+  const { n, dist, width, stream, yard, bed } = LANE_TEXTURE;
   const data = new Uint8Array(n * n * 4);
   for (let k = 0; k < n * n; k++) {
     const w = width[k] || 2.5;
     // Store a soft falloff; the shader sharpens it with its own noise so the edge frays.
     data[k * 4] = b(1 - smoothstep(w * 0.5 - 0.6, w * 0.5 + 0.9, dist[k]));
     data[k * 4 + 1] = b(1 - smoothstep(1.2, 5.5, stream[k]));
-    data[k * 4 + 2] = 0;
-    data[k * 4 + 3] = 255;
+    data[k * 4 + 2] = yard[k];
+    data[k * 4 + 3] = bed[k];
   }
   const t = dataTex(data, n, n);
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;

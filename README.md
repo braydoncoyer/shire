@@ -38,6 +38,9 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 | `src/world/Grass.js` | GPU-driven grass, reeds and wildflowers: compute placement + culling, indirect draws |
 | `src/world/TreeGen.js`, `Vegetation.js` | Procedural oaks, poplars and willows; instanced placement with wind |
 | `src/world/Water.js` | Lake with planar reflection, refraction and depth tint; the flowing stream |
+| `src/world/Kit.js` | Procedural building materials (fieldstone, plaster, planks, shingles, brick, lit glass) and a merge-per-material builder |
+| `src/world/Holes.js` | Hobbit holes (and Bag End) generated along the lanes: facades in turf domes, round doors, gardens, fences |
+| `src/world/Buildings.js` | The double-arched bridge, the Mill with its turning waterwheel, the Green Dragon |
 | `src/sky/Atmosphere.js` | Rayleigh/Mie/ozone atmosphere (Hillaire 2020), evaluated on CPU and GPU |
 | `src/sky/Sky.js` | Sky-view LUT, raymarched cumulus + cirrus with temporal accumulation, stars, aerial perspective |
 | `src/sky/Lighting.js` | Sun/moon light with cascaded shadows, sky ambient, auto exposure |

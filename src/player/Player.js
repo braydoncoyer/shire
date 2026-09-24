@@ -2,7 +2,9 @@
 // analytic height function, and solid things register circles or boxes in `colliders`.
 
 import * as THREE from 'three/webgpu';
-import { heightAt, lakeFactor, LANDMARKS, WALK_RADIUS } from '../world/Layout.js';
+import { heightAt, surfaceAt, lakeFactor, LANDMARKS, WALK_RADIUS } from '../world/Layout.js';
+
+const groundAt = (x, z) => Math.max(heightAt(x, z), surfaceAt(x, z));
 
 const EYE = 1.62;
 const WALK = 3.4, SPRINT = 7.5, GRAVITY = 22, JUMP = 6.2;
@@ -26,7 +28,7 @@ export class Player {
   }
 
   setPose(x, y, z, yaw, pitch) {
-    this.pos.set(x, Number.isFinite(y) ? y : heightAt(x, z), z);
+    this.pos.set(x, Number.isFinite(y) ? y : groundAt(x, z), z);
     this.yaw = yaw;
     this.pitch = pitch;
     this.vel.set(0, 0, 0);
@@ -82,7 +84,7 @@ export class Player {
     this.pos.z = cz;
     this.pos.y += this.vel.y * dt;
 
-    const ground = heightAt(this.pos.x, this.pos.z);
+    const ground = groundAt(this.pos.x, this.pos.z);
     if (this.pos.y <= ground) {
       this.pos.y = ground;
       this.vel.y = 0;

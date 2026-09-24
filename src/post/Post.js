@@ -17,7 +17,9 @@ export class Post {
 
     // Night vision: colors drain toward a cool blue as the eye shifts to rod vision.
     const lum = lit.r.mul(0.2126).add(lit.g.mul(0.7152)).add(lit.b.mul(0.0722));
-    const graded = mix(lit.rgb, vec3(0.55, 0.72, 1.0).mul(lum), sky.u.night.mul(0.7));
+    // Bright light sources (lamps, windows) stay in color vision.
+    const rods = sky.u.night.mul(0.7).mul(float(1).sub(smoothstep(0.25, 1.2, lum)));
+    const graded = mix(lit.rgb, vec3(0.55, 0.72, 1.0).mul(lum), rods);
 
     const mapped = renderOutput(graded);
     const vig = float(1).sub(smoothstep(0.45, 1.05, length(screenUV.sub(0.5).mul(1.35))).mul(0.3));

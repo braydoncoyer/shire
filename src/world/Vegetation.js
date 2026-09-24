@@ -9,7 +9,7 @@ import {
 } from 'three/tsl';
 import { buildTree, leafTexture, SPECIES } from './TreeGen.js';
 import {
-  heightAt, laneMask, streamMask, lakeFactor, LANDMARKS, STREAM, WALK_RADIUS,
+  heightAt, laneMask, streamMask, lakeFactor, LANDMARKS, STREAM, WALK_RADIUS, MILL, BRIDGE, HOLES,
 } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 
@@ -35,9 +35,11 @@ function blocked(x, z, pad = 0) {
   // The south face of the Hill and the shoulder east of it are for hobbit holes (M3).
   if (x > -120 && x < 70 && z > -95 && z < 5) return true;
   if (Math.hypot(x - LANDMARKS.spawn.x, z - LANDMARKS.spawn.z) < 14) return true;
-  const gd = LANDMARKS.greenDragon, mill = LANDMARKS.mill;
+  const gd = LANDMARKS.greenDragon;
   if (Math.hypot(x - gd.x, z - gd.z) < 32) return true;
-  if (Math.hypot(x - mill.x, z - mill.z) < 22) return true;
+  if (Math.hypot(x - MILL.x, z - MILL.z) < 20) return true;
+  if (Math.hypot(x - BRIDGE.x, z - BRIDGE.z) < 18) return true;
+  if (HOLES.some((h) => Math.hypot(x - h.x, z - h.z) < 12)) return true;
   return false;
 }
 
@@ -68,12 +70,12 @@ export function planTrees() {
 
   // Willows along the stream, set back from the water.
   const sp = STREAM.smooth;
-  for (let i = 3; i < sp.length - 3; i += 5) {
+  for (let i = 3; i < sp.length - 3; i += 4) {
     const [x0, z0] = sp[i], [x1, z1] = sp[i + 1];
     const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz);
     const side = rand() < 0.5 ? -1 : 1;
     const x = x0 + (-dz / l) * side * (6 + rand() * 4), z = z0 + (dx / l) * side * (6 + rand() * 4);
-    if (!blocked(x, z, 2) || streamMask(x, z) < 0.05) add('willow', x, z, 0.75 + rand() * 0.25);
+    if (!blocked(x, z, 2) && rand() < 0.6) add('willow', x, z, 0.75 + rand() * 0.25);
   }
 
   // Oak clumps on the knolls: clustered by a noise field, thinning toward the horizon.

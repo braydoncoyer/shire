@@ -4,7 +4,7 @@
 
 import * as THREE from 'three/webgpu';
 import {
-  Fn, texture, positionWorld, normalWorld, cameraPosition, vec3, float, mix, smoothstep, abs, step, color,
+  Fn, texture, positionWorld, normalWorld, cameraPosition, vec3, float, mix, smoothstep, abs, step, color, max,
 } from 'three/tsl';
 import { heightAt, INNER_HALF, WORLD_HALF, WATER_Y } from './Layout.js';
 import { makeGroundNoiseTexture, makeLaneTexture } from '../util/textures.js';
@@ -146,6 +146,13 @@ export function makeTerrainMaterial(groundNoise, laneTex) {
     const grav = mix(gravelDark, gravel, n4.r.mul(0.5).add(n3.g.mul(0.2)).add(pebble.mul(0.5)).sub(0.1).saturate());
     const col = mix(g, soil.mul(1.1), edge.mul(0.55)).toVar();
     col.assign(mix(col, grav, lane));
+
+    // Garden beds: dark, dug soil (vegetable rows are barer than flower beds).
+    const bedA = lt.a.mul(inInner);
+    const veg = smoothstep(0.3, 0.45, bedA).mul(float(1).sub(smoothstep(0.62, 0.8, bedA)));
+    const flowerBed = smoothstep(0.7, 0.9, bedA);
+    const dug = color(0x3e2f22).mul(n4.r.mul(0.4).add(0.8));
+    col.assign(mix(col, dug, max(veg, flowerBed.mul(0.75))));
 
     // Stream bed and the lake shore.
     const bed = smoothstep(0.35, 0.8, lt.g).mul(inInner);

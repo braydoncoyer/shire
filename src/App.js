@@ -8,6 +8,9 @@ import { Water } from './world/Water.js';
 import { GroundMaps } from './world/GroundMaps.js';
 import { Grass } from './world/Grass.js';
 import { Vegetation } from './world/Vegetation.js';
+import { makeMaterials } from './world/Kit.js';
+import { HobbitHoles } from './world/Holes.js';
+import { Buildings } from './world/Buildings.js';
 import { Player } from './player/Player.js';
 import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
@@ -56,9 +59,17 @@ export class App {
     this.vegetation = new Vegetation(this.sky, this.terrain.groundNoise);
     scene.add(this.vegetation.group);
 
+    progress('Digging the hobbit holes');
+    await tick();
+    this.mats = makeMaterials(this.sky, this.terrain.groundNoise);
+    this.holes = new HobbitHoles(this.mats);
+    scene.add(this.holes.group);
+    this.buildings = new Buildings(this.mats);
+    scene.add(this.buildings.group);
+
     this.input = new Input(renderer.domElement);
     this.player = new Player(camera, this.input);
-    this.player.colliders.push(...this.vegetation.colliders);
+    this.player.colliders.push(...this.vegetation.colliders, ...this.holes.colliders, ...this.buildings.colliders);
     const s = this.settings;
     if (s.cam) this.player.setPose(s.cam[0], s.cam[1], s.cam[2], s.cam[3], s.cam[4]);
     if (s.fly) this.player.fly = true;
@@ -100,6 +111,7 @@ export class App {
     this.lighting.update(dt, this.camera);
     this.grass.update(dt, this.camera, s, this.renderer);
     this.vegetation.update(dt, s);
+    this.buildings.update(dt);
     this.water.update(dt, s);
     this.post.exposure.value = this.lighting.finalExposure();
     this.post.bloomStrength.value = s.bloom;

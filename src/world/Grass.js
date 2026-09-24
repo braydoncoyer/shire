@@ -192,14 +192,17 @@ export class Grass {
       const ps = patch.add(65536);
       const pseed = ps.x.toUint().mul(uint(83492791)).bitXor(ps.y.toUint().mul(uint(2654435761)));
       // Each drift has a dominant species; a third of its flowers are strays of any kind.
-      const species = select(h[3].lessThan(0.33), h[4].mul(FLOWERS.length).floor(), hash(pseed).mul(FLOWERS.length).floor());
+      const stray = h[3].lessThan(select(lanes.a.greaterThan(0.7), float(0.6), float(0.33)));
+      const species = select(stray, h[4].mul(FLOWERS.length).floor(), hash(pseed).mul(FLOWERS.length).floor());
       let tint = color(FLOWERS[0]);
       for (let k = 1; k < FLOWERS.length; k++) tint = select(species.equal(float(k)), color(FLOWERS[k]), tint);
       const drift = smoothstep(0.5, 0.68, maps.noise(xz, 17).r.mul(0.7).add(n2.b.mul(0.3))).mul(0.9);
       const pf = xz.sub(vec2(PF.x, PF.z)).div(vec2(PF.rx, PF.rz));
       const mown = float(1).sub(smoothstep(0.85, 1.1, length(pf)));
       const dryLand = float(1).sub(maps.lake(xz)).mul(float(1).sub(smoothstep(0.1, 0.3, lanes.g)));
-      const density = drift.mul(float(1).sub(mown.mul(0.8))).mul(float(1).sub(smoothstep(0.02, 0.3, lanes.r))).mul(dryLand).mul(aboveWater);
+      const flowerBed = smoothstep(0.7, 0.9, lanes.a);
+      const meadowDensity = drift.mul(float(1).sub(mown.mul(0.8))).mul(float(1).sub(lanes.b));
+      const density = max(meadowDensity, flowerBed.mul(0.95)).mul(float(1).sub(smoothstep(0.02, 0.3, lanes.r))).mul(dryLand).mul(aboveWater);
       const hgt = step(h[5].mul(0.75).add(0.05), density).mul(h[2].mul(0.25).add(0.3));
       const col = tint.mul(h[4].mul(0.25).add(0.85));
       return { hgt, col };
@@ -211,8 +214,9 @@ export class Grass {
     const meadow = smoothstep(0.5, 0.72, n1.r.mul(0.7).add(n2.g.mul(0.3)));
     const laneCut = float(1).sub(smoothstep(0.25, 0.55, lanes.r.add(n2.b.sub(0.5).mul(0.3))));
     const pf = xz.sub(vec2(PF.x, PF.z)).div(vec2(PF.rx, PF.rz));
-    const mown = max(float(1).sub(smoothstep(0.85, 1.1, length(pf))), smoothstep(0.02, 0.2, lanes.r));
-    const dry = float(1).sub(smoothstep(0.2, 0.5, lanes.g)).mul(float(1).sub(lake)).mul(aboveWater);
+    const mown = max(max(float(1).sub(smoothstep(0.85, 1.1, length(pf))), smoothstep(0.02, 0.2, lanes.r)), lanes.b);
+    const bed = smoothstep(0.3, 0.45, lanes.a);
+    const dry = float(1).sub(smoothstep(0.2, 0.5, lanes.g)).mul(float(1).sub(lake)).mul(aboveWater).mul(float(1).sub(bed));
     const turf = mix(float(0.2), float(0.5), meadow).mul(float(1).sub(mown.mul(0.55)));
     const hgt = turf.mul(h[2].mul(0.6).add(0.7)).mul(laneCut.mul(0.85).add(0.15)).mul(dry).mul(step(0.02, laneCut.mul(dry)));
     const col = mix(GRASS.lush, GRASS.bright, h[2].mul(0.6).add(n1.g.mul(0.5)).sub(0.1).saturate()).toVar();
