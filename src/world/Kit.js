@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   Fn, uv, vec2, vec3, float, mix, smoothstep, fract, abs, sin, attribute, color, texture, positionWorld,
-  mx_worley_noise_vec2, mx_fractal_noise_float, uniform, max, floor, hash, step,
+  mx_worley_noise_vec2, mx_fractal_noise_float, uniform, max, floor, hash, step, vec4, saturate, fwidth,
 } from 'three/tsl';
 
 // ---------------------------------------------------------------------------------------------
@@ -77,6 +77,42 @@ export function makeMaterials(sky, noiseTex) {
     return vcol.mul(n);
   })();
 
+  // Thatch: bundles of straw running down the slope (uv.y), laid in overlapping courses, greyed and
+  // mossy with age. uv is in meters.
+  const thatch = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide });
+  thatch.colorNode = Fn(() => {
+    const p = uv();
+    const course = fract(p.y.mul(1.6).add(texture(noiseTex, p.mul(vec2(0.3, 0.1))).r.mul(0.6)));
+    const strands = texture(noiseTex, vec2(p.x.mul(14), p.y.mul(1.4))).a;
+    const fine = texture(noiseTex, vec2(p.x.mul(40), p.y.mul(3))).b;
+    const clump = texture(noiseTex, p.mul(vec2(0.6, 0.35))).g;
+    // Old reed thatch weathers to grey-brown; fresher patches are warmer, moss darkens the hollows.
+    const base = mix(color(0x5e5446), color(0x9a8a6c), strands.mul(0.6).add(fine.mul(0.4)).saturate());
+    const warm = mix(base, color(0xa38a5c), smoothstep(0.6, 0.85, clump).mul(0.35));
+    const moss = mix(warm, color(0x4a5230), smoothstep(0.1, 0.3, clump).mul(0.3));
+    const shade = smoothstep(0.0, 0.3, course).mul(0.3).add(0.7);
+    return moss.mul(shade).mul(vcol);
+  })();
+
+  // Turf: the grassy hood that overhangs hobbit-hole facades. Hanging strands, darker underneath.
+  const turf = new THREE.MeshStandardNodeMaterial({ roughness: 1 });
+  turf.colorNode = Fn(() => {
+    const p = uv();
+    const strands = texture(noiseTex, vec2(p.x.mul(11), p.y.mul(1.2))).a;
+    const patch = texture(noiseTex, p.mul(0.7)).r;
+    const g = mix(color(0x35601a), color(0x6f9a2c), strands.mul(0.6).add(patch.mul(0.5)).sub(0.1).saturate());
+    return g.mul(vcol);
+  })();
+
+  // Grass fringe cards: tufts of long strands, alpha-tested, for turf edges.
+  const fringe = new THREE.MeshLambertNodeMaterial({ side: THREE.DoubleSide, alphaTest: 0.5 });
+  fringe.alphaToCoverage = true;
+  const strandTex = texture(strandTexture(), uv());
+  fringe.colorNode = Fn(() => {
+    const a = saturate(strandTex.a.sub(0.45).div(max(fwidth(strandTex.a), 1e-4)).add(0.5));
+    return vec4(mix(color(0x2f5a16), color(0x86a83a), strandTex.r).mul(vcol), a);
+  })();
+
   const metal = new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 1 });
   metal.colorNode = vcol;
 
@@ -92,9 +128,37 @@ export function makeMaterials(sky, noiseTex) {
     return lampWarm.mul(lit).mul(smoothstep(0.05, 0.6, night)).mul(0.11).mul(grid).mul(flicker.mul(0.08).add(0.95));
   })();
 
-  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster };
+  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster, thatch, turf, fringe };
   mats.flicker = flicker;
   return mats;
+}
+
+/** Long grass strands hanging from the top edge. R: shade (tips lighter), A: coverage. */
+function strandTexture() {
+  const W = 256, H = 256;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 260; i++) {
+    const x = rnd() * W, len = H * (0.35 + rnd() * 0.65), bend = (rnd() - 0.5) * 40, w = 2 + rnd() * 3;
+    const grad = g.createLinearGradient(0, 0, 0, len);
+    grad.addColorStop(0, 'rgb(40,0,0)');
+    grad.addColorStop(1, 'rgb(255,0,0)');
+    g.strokeStyle = grad;
+    g.lineWidth = w;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.quadraticCurveTo(x + bend * 0.3, len * 0.5, x + bend, len);
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.NoColorSpace;
+  t.generateMipmaps = true;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  return t;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -165,5 +229,56 @@ export function cylinder(rt, rb, h, seg = 12, open = false) {
   const uvs = g.attributes.uv;
   const circ = Math.PI * (rt + rb);
   for (let i = 0; i < uvs.count; i++) uvs.setXY(i, uvs.getX(i) * circ, uvs.getY(i) * h);
+  return g;
+}
+
+/**
+ * Rounded thatch roof: the top half of a superellipsoid "loaf" over a w × d footprint, rising h
+ * above its eaves, plus an underside so the thick eaves read from below. Local origin at the eave
+ * center; x along w. uv in meters (u around, v down from the ridge).
+ */
+export function thatchRoof(w, d, h, { hip = 2.4, side = 3.2, seg = 28 } = {}) {
+  const a = w / 2, b = d / 2;
+  const pos = [], uv = [], idx = [];
+  const sgnPow = (x, e) => Math.sign(x) * Math.pow(Math.abs(x), e);
+  const rows = seg / 2, cols = seg * 2;
+  for (let i = 0; i <= rows; i++) {
+    const th = (i / rows) * (Math.PI / 2); // 0 at the ridge, pi/2 at the eaves
+    const ct = Math.cos(th), st = Math.sin(th);
+    for (let j = 0; j <= cols; j++) {
+      const ph = (j / cols) * Math.PI * 2;
+      const r = sgnPow(st, 2 / side);
+      const x = a * r * sgnPow(Math.cos(ph), 2 / hip);
+      const z = b * r * sgnPow(Math.sin(ph), 2 / hip);
+      const y = h * sgnPow(ct, 2 / side);
+      pos.push(x, y, z);
+      uv.push((j / cols) * 2 * (w + d), (i / rows) * (h + Math.max(a, b)));
+    }
+  }
+  for (let i = 0; i < rows; i++)
+    for (let j = 0; j < cols; j++) {
+      const p = i * (cols + 1) + j, q = p + cols + 1;
+      idx.push(p, q, p + 1, p + 1, q, q + 1);
+    }
+  // Underside: a flat ring just inside the eave, dropped a little, to give the eaves thickness.
+  const base = pos.length / 3;
+  for (let j = 0; j <= cols; j++) {
+    const ph = (j / cols) * Math.PI * 2;
+    for (const [k, dy] of [[1, 0], [0.82, 0.35]]) {
+      pos.push(a * k * sgnPow(Math.cos(ph), 2 / hip), dy, b * k * sgnPow(Math.sin(ph), 2 / hip));
+      uv.push((j / cols) * 2 * (w + d), dy);
+    }
+  }
+  const eave = rows * (cols + 1);
+  for (let j = 0; j < cols; j++) {
+    const o = base + j * 2, i0 = eave + j;
+    idx.push(i0, i0 + 1, o, o, i0 + 1, o + 2); // eave edge to the outer ring
+    idx.push(o, o + 2, o + 1, o + 1, o + 2, o + 3);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
   return g;
 }

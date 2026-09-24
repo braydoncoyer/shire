@@ -100,16 +100,12 @@ export class Player {
   }
 
   _collide(x, z) {
-    // Keep out of the lake and inside the walkable area.
-    for (let i = 0; i < 2; i++) {
-      if (lakeFactor(x, z) > 0.55) {
-        const L = LANDMARKS.lake;
-        const dx = x - L.x, dz = z - L.z, d = Math.hypot(dx, dz) || 1;
-        x += (dx / d) * 0.12;
-        z += (dz / d) * 0.12;
-      }
+    // Keep out of the water: slide along the shore by trying each axis on its own.
+    if (lakeFactor(x, z) > 0.55) {
+      if (lakeFactor(x, this.pos.z) <= 0.55) z = this.pos.z;
+      else if (lakeFactor(this.pos.x, z) <= 0.55) x = this.pos.x;
+      else return [this.pos.x, this.pos.z];
     }
-    if (lakeFactor(x, z) > 0.55) return [this.pos.x, this.pos.z];
     const r = Math.hypot(x, z);
     if (r > WALK_RADIUS) { x *= WALK_RADIUS / r; z *= WALK_RADIUS / r; }
     const R = 0.35;

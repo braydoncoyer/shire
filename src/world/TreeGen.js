@@ -19,6 +19,18 @@ export const SPECIES = {
     leaves: { perTip: 10, size: 2.0, spread: 1.4, texture: 'broadleaf', aspect: 1 },
     color: 0x4a7a26,
   },
+  // The Party Tree: an old pine with long, low, sweeping limbs and dark needle clusters.
+  pine: {
+    trunk: { length: 5.5, radius: 0.75, wobble: 0.08 },
+    levels: [
+      { children: 11, start: 0.2, angle: 72, lenFactor: 1, radFactor: 0.45, wobble: 0.16, up: 0.03, droop: 0.12, segLen: 1.4, spread: 1 },
+      { children: 6, start: 0.2, angle: 50, lenFactor: 0.5, radFactor: 0.55, wobble: 0.22, up: 0.06, droop: 0.05, segLen: 0.9, spread: 1 },
+      { children: 4, start: 0.3, angle: 40, lenFactor: 0.5, radFactor: 0.6, wobble: 0.25, up: 0.12, droop: 0.02, segLen: 0.6, spread: 1 },
+    ],
+    firstLength: 10.5,
+    leaves: { perTip: 7, size: 2.1, spread: 1.0, texture: 'needles', aspect: 0.75 },
+    color: 0x3c5a2c,
+  },
   poplar: {
     trunk: { length: 17, radius: 0.32, wobble: 0.03 },
     levels: [
@@ -69,7 +81,23 @@ function paintLeafCluster(kind) {
     g.stroke();
     g.restore();
   };
-  if (kind === 'willow') {
+  if (kind === 'needles') {
+    // Tufts of needles radiating from short twigs.
+    for (let t = 0; t < 14; t++) {
+      const cx = W * (0.2 + rand() * 0.6), cy = H * (0.25 + rand() * 0.5);
+      const n = 40 + Math.floor(rand() * 20);
+      for (let i = 0; i < n; i++) {
+        const a = rand() * Math.PI * 2, len = 22 + rand() * 26;
+        const v = Math.round(140 + rand() * 115);
+        g.strokeStyle = `rgb(${v},${v},${v})`;
+        g.lineWidth = 1.6;
+        g.beginPath();
+        g.moveTo(cx, cy);
+        g.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len * 0.8);
+        g.stroke();
+      }
+    }
+  } else if (kind === 'willow') {
     // A hanging strand: a thin twig with narrow leaves along it.
     g.strokeStyle = 'rgb(90,90,90)';
     g.lineWidth = 2;

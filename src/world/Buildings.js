@@ -3,7 +3,7 @@
 // Kit and merged per material.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder } from './Kit.js';
+import { Builder, mtx, box, cylinder, thatchRoof } from './Kit.js';
 import { BRIDGE, bridgeDeck, MILL, GREEN_DRAGON } from './Layout.js';
 
 const STONE = 0xb4a992, STONE_DARK = 0x958b78, TIMBER = 0x5a4130, PLASTER = 0xe6dcc3, ROOF = 0x5d4a3e;
@@ -120,62 +120,70 @@ export class Buildings {
     const M = MILL;
     const base = new THREE.Matrix4().makeRotationY(M.yaw).setPosition(M.x, M.y, M.z);
     const at = (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(x, y, z, rx, ry, rz));
-    const W = 8, D = 7, H1 = 3.4, H2 = 2.8, T = 0.45;
-    // Local frame: +z points away from the stream; the wheel side is -z.
-    const door = [{ x0: -0.7, x1: 0.7, y0: 0, y1: 2.2 }];
-    const win = (x) => ({ x0: x - 0.45, x1: x + 0.45, y0: 1.1, y1: 2.2 });
-    B.add('stone', box(W + 0.6, 0.6, D + 0.6), at(0, -0.2, 0), STONE_DARK); // plinth
-    wall(B, 'stone', at, -W / 2, W / 2, D / 2 - T / 2, 0, H1, T, [...door, win(-2.3), win(2.3)], STONE);
-    wall(B, 'stone', at, -W / 2, W / 2, -D / 2 + T / 2, 0, H1, T, [win(-2)], STONE);
-    for (const s of [-1, 1]) B.add('stone', box(T, H1, D - T * 2), at(s * (W / 2 - T / 2), H1 / 2, 0), STONE);
-    B.add('wood', box(1.4, 2.2, 0.06), at(0, 1.1, D / 2 - 0.1), 0x6a4a30); // door
-    for (const x of [-2.3, 2.3]) this._window(B, at, x, 1.65, D / 2 - T / 2, 0.9, 1.1, x < 0);
-    this._window(B, at, -2, 1.65, -D / 2 + T / 2, 0.9, 1.1, false);
-
-    // Upper storey: plaster with dark timber framing, slightly jettied.
-    const j = 0.25;
-    B.add('plaster', box(W + j * 2, H2, D + j * 2), at(0, H1 + H2 / 2, 0), PLASTER);
-    for (const s of [-1, 1]) {
-      for (let x = -W / 2 - j; x <= W / 2 + j + 0.01; x += (W + 2 * j) / 5)
-        B.add('wood', box(0.16, H2, 0.06), at(x, H1 + H2 / 2, s * (D / 2 + j + 0.02)), TIMBER);
-      B.add('wood', box(W + j * 2 + 0.1, 0.18, 0.08), at(0, H1 + 0.09, s * (D / 2 + j + 0.03)), TIMBER);
-      B.add('wood', box(W + j * 2 + 0.1, 0.16, 0.08), at(0, H1 + H2 - 0.08, s * (D / 2 + j + 0.03)), TIMBER);
-      for (const x of [-2.4, 2.4]) {
-        B.add('glass', box(0.9, 0.9, 0.05), at(x, H1 + 1.4, s * (D / 2 + j + 0.05)), 0xff0000);
-        B.add('wood', box(1.05, 1.05, 0.04), at(x, H1 + 1.4, s * (D / 2 + j + 0.035)), TIMBER);
+    const toWorld = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyMatrix4(base);
+    // Sandyman's Mill, from its mapped 16 × 9 m footprint: a fieldstone ground course, ochre plaster
+    // and dark timber above, heavy thatch, a stone chimney, a blue door, and the wheel on the water
+    // side (local −z faces the water).
+    const W = Math.min(M.len, 14), D = Math.min(M.wid, 8), H = 3.3, T = 0.4;
+    const CREAM = 0xd6b25e;
+    B.add('stone', box(W + 0.6, 0.8, D + 0.6), at(0, -0.3, 0), STONE_DARK);
+    const door = { x0: 1.2, x1: 2.4, y0: 0, y1: 2.1 };
+    const win = (x) => ({ x0: x - 0.5, x1: x + 0.5, y0: 1.1, y1: 2.1 });
+    const walls = [
+      { m: base.clone().multiply(mtx(0, 0, D / 2 - T / 2)), len: W, open: [door, win(-2.5), win(4.5)] },
+      { m: base.clone().multiply(mtx(0, 0, -D / 2 + T / 2, 0, Math.PI, 0)), len: W, open: [win(-1.5), win(3)] },
+      { m: base.clone().multiply(mtx(W / 2 - T / 2, 0, 0, 0, Math.PI / 2, 0)), len: D - T * 2, open: [win(0)] },
+      { m: base.clone().multiply(mtx(-W / 2 + T / 2, 0, 0, 0, -Math.PI / 2, 0)), len: D - T * 2, open: [] },
+    ];
+    for (const w of walls) {
+      const wat = (x, y, z, rx, ry, rz) => w.m.clone().multiply(mtx(x, y, z, rx, ry, rz));
+      // Stone up to the sills, plaster above, timber frame over it.
+      wall(B, 'stone', wat, -w.len / 2, w.len / 2, 0, 0, 1.0, T, w.open.filter((o) => o.y0 < 1), STONE);
+      wall(B, 'plaster', wat, -w.len / 2, w.len / 2, 0, 1.0, H - 1.0, T, w.open.map((o) => ({ ...o, y0: Math.max(0, o.y0 - 1), y1: o.y1 - 1 })), CREAM);
+      B.add('wood', box(w.len + 0.1, 0.18, 0.1), wat(0, 1.0, T / 2 + 0.03), TIMBER);
+      B.add('wood', box(w.len + 0.1, 0.2, 0.1), wat(0, H - 0.1, T / 2 + 0.03), TIMBER);
+      const n = Math.max(2, Math.round(w.len / 2));
+      for (let k = 0; k <= n; k++) {
+        const x = -w.len / 2 + (k * w.len) / n;
+        if (w.open.some((o) => x > o.x0 - 0.1 && x < o.x1 + 0.1)) continue;
+        B.add('wood', box(0.15, H - 1.0, 0.1), wat(x, 1.0 + (H - 1.0) / 2, T / 2 + 0.03), TIMBER);
+      }
+      for (const o of w.open) {
+        if (o === door) continue;
+        this._window(B, wat, (o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, 0, o.x1 - o.x0, o.y1 - o.y0, true);
       }
     }
-    const rise = gableRoof(B, at, W + j * 2, D + j * 2, H1 + H2, 0.78, 0.5, ROOF);
-    void rise;
-    // Chimney.
-    B.add('brick', box(0.7, 3.2, 0.7), at(W / 2 - 1.2, H1 + H2 + 1.6, 1.2), 0x9a5236);
-    this.chimneys.push(new THREE.Vector3(W / 2 - 1.2, H1 + H2 + 3.3, 1.2).applyMatrix4(base));
-    this.lamps.push(new THREE.Vector3(1.2, 2.4, D / 2 + 0.4).applyMatrix4(base));
-    B.add('metal', box(0.2, 0.3, 0.2), at(1.2, 2.4, D / 2 + 0.25), 0x2a2a2a);
-    B.add('glass', box(0.14, 0.22, 0.14), at(1.2, 2.4, D / 2 + 0.25), 0xff0000);
+    // Blue plank door under a little timber hood.
+    B.add('paint', box(door.x1 - door.x0 - 0.05, door.y1 - door.y0, 0.07), at((door.x0 + door.x1) / 2, (door.y0 + door.y1) / 2, D / 2 - 0.05), 0x2e5a9a);
+    B.add('wood', box(door.x1 - door.x0 + 0.4, 0.14, 0.2), at((door.x0 + door.x1) / 2, door.y1 + 0.1, D / 2 + 0.05), TIMBER);
+    // Thatch and a big fieldstone chimney at the east gable.
+    B.add('thatch', thatchRoof(W + 1.4, D + 1.6, 3.4, { hip: 5, side: 1.3 }), at(0, H - 0.3, 0), 0xffffff);
+    B.add('stone', box(1.3, 7.0, 1.1), at(W / 2 + 0.35, 2.9, -0.8), STONE);
+    B.add('stone', box(1.0, 0.25, 0.9), at(W / 2 + 0.35, 6.5, -0.8), STONE_DARK);
+    this.chimneys.push(toWorld(W / 2 + 0.35, -0.8).setY(M.y + 6.8));
+    this.lamps.push(toWorld(door.x0 - 0.35, D / 2 + 0.3).setY(M.y + 2.2));
+    B.add('metal', box(0.2, 0.3, 0.2), at(door.x0 - 0.35, 2.2, D / 2 + 0.15), 0x2a2a2a);
+    B.add('glass', box(0.14, 0.22, 0.14), at(door.x0 - 0.35, 2.2, D / 2 + 0.15), 0xff0000);
 
-    // Waterwheel on the stream side, turning on its own.
+    // The waterwheel on the water side, turning on its own.
     const wheelB = new Builder();
-    const R = 2.3, width = 1.0, paddles = 16;
-    for (const s of [-1, 1]) wheelB.add('wood', new THREE.TorusGeometry(R, 0.1, 6, 32), mtx(0, 0, s * width / 2), TIMBER);
-    for (const s of [-1, 1]) wheelB.add('wood', new THREE.TorusGeometry(R * 0.45, 0.07, 6, 20), mtx(0, 0, s * width / 2), TIMBER);
+    const R = 2.2, width = 1.0, paddles = 16;
+    for (const sd of [-1, 1]) wheelB.add('wood', new THREE.TorusGeometry(R, 0.1, 6, 32), mtx(0, 0, sd * width / 2), TIMBER);
+    for (const sd of [-1, 1]) wheelB.add('wood', new THREE.TorusGeometry(R * 0.45, 0.07, 6, 20), mtx(0, 0, sd * width / 2), TIMBER);
     for (let k = 0; k < paddles; k++) {
       const a = (k / paddles) * Math.PI * 2;
       wheelB.add('wood', box(0.08, 0.55, width), mtx(Math.cos(a) * (R - 0.2), Math.sin(a) * (R - 0.2), 0, 0, 0, a), 0x6e5238);
-      if (k % 2 === 0) for (const s of [-1, 1]) wheelB.add('wood', box(R * 2 * 0.98, 0.1, 0.08), mtx(0, 0, s * width / 2, 0, 0, a), TIMBER);
+      if (k % 2 === 0) for (const sd of [-1, 1]) wheelB.add('wood', box(R * 2 * 0.98, 0.1, 0.08), mtx(0, 0, sd * width / 2, 0, 0, a), TIMBER);
     }
     wheelB.add('metal', cylinder(0.14, 0.14, width + 1.4, 10), mtx(0, 0, 0, Math.PI / 2), 0x3a3632);
     this.wheel = wheelB.build(this.mats);
-    const axleY = M.water - M.y + R - 0.45; // bottom paddles dip into the stream
+    const axleY = M.water - M.y + R - 0.45; // bottom paddles dip into the water
     this.wheel.matrixAutoUpdate = false;
-    this.wheelBase = base.clone().multiply(mtx(0, axleY, -D / 2 - width / 2 - 0.35, 0, Math.PI / 2, 0));
+    this.wheelBase = base.clone().multiply(mtx(-2, axleY, -D / 2 - width / 2 - 0.35, 0, Math.PI / 2, 0));
     this.wheelAngle = 0;
     this.group.add(this.wheel);
-    // Timber frame holding the axle.
-    B.add('wood', box(0.25, axleY + 1.2, 0.25), at(0, (axleY - 1.2) / 2 + 0.6 - 0.6, -D / 2 - width - 1.0), TIMBER);
+    B.add('wood', box(0.25, Math.max(0.5, -axleY + 2.4), 0.25), at(-2, axleY / 2, -D / 2 - width - 1.0), TIMBER);
 
-    const c = Math.cos(M.yaw), s2 = Math.sin(M.yaw);
-    void c; void s2;
     this.colliders.push({ x: M.x, z: M.z, hx: W / 2 + 0.3, hz: D / 2 + 0.3, rot: M.yaw });
   }
 
@@ -185,109 +193,160 @@ export class Buildings {
     const G = GREEN_DRAGON;
     const base = new THREE.Matrix4().makeRotationY(G.yaw).setPosition(G.x, G.y, G.z);
     const at = (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(x, y, z, rx, ry, rz));
-    const W = G.w, D = G.d, H1 = 3.4, H2 = 2.9, T = 0.5, j = 0.3;
-    // Local frame: +z is the front (facing the bridge), x along the facade.
-
-    // Floor and plinth.
-    B.add('stone', box(W + 0.6, 0.5, D + 0.6), at(0, -0.1, 0), STONE_DARK);
-    B.add('wood', box(W - T * 2, 0.1, D - T * 2), at(0, 0.2, 0), 0x6b4c34);
-
-    // Ground floor: stone, with a round-topped door and wide windows.
-    const doorW = 1.5;
-    const front = [{ x0: -doorW / 2, x1: doorW / 2, y0: 0.15, y1: 2.5 }];
-    for (const x of [-5, -2.6, 2.6, 5]) front.push({ x0: x - 0.7, x1: x + 0.7, y0: 0.95, y1: 2.35 });
-    wall(B, 'stone', at, -W / 2, W / 2, D / 2 - T / 2, 0, H1, T, front, STONE);
-    const back = [{ x0: 4.2, x1: 5.4, y0: 0.15, y1: 2.3 }, { x0: -4.7, x1: -3.3, y0: 0.95, y1: 2.35 }, { x0: -0.7, x1: 0.7, y0: 0.95, y1: 2.35 }];
-    wall(B, 'stone', at, -W / 2, W / 2, -D / 2 + T / 2, 0, H1, T, back, STONE);
-    const sideAt = (s) => (x, y, z, rx = 0, ry = 0, rz = 0) => at(s * (W / 2 - T / 2) + 0 * x, y, -x, rx, ry + Math.PI / 2, rz).multiply(mtx(0, 0, 0));
-    for (const s of [-1, 1]) {
-      const side = [{ x0: -1.6, x1: -0.2, y0: 0.95, y1: 2.35 }, { x0: 1.2, x1: 2.6, y0: 0.95, y1: 2.35 }];
-      wall(B, 'stone', (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(s * (W / 2 - T / 2), 0, 0, 0, s * Math.PI / 2, 0)).multiply(mtx(x, y, z, rx, ry, rz)),
-        -D / 2 + T, D / 2 - T, 0, 0, H1, T, side, STONE);
-    }
-    void sideAt;
-    // Round arch over the door, the door itself (ajar), glazing with lit panes.
-    B.add('stone', new THREE.TorusGeometry(doorW / 2 + 0.12, 0.16, 6, 20, Math.PI), at(0, 2.5, D / 2 + 0.02), STONE_DARK);
-    B.add('stone', box(doorW, doorW / 2, T), at(0, 2.5 + doorW / 4, D / 2 - T / 2), STONE);
-    B.add('paint', box(doorW - 0.1, 2.3, 0.08), at(-doorW / 2 + 0.05, 1.3, D / 2 + 0.55, 0, 1.2, 0).multiply(mtx((doorW - 0.1) / 2, 0, 0)), 0x2f6b3a);
-    for (const o of front.slice(1)) this._window(B, at, (o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, D / 2 - T / 2, o.x1 - o.x0, o.y1 - o.y0, true);
-    for (const o of back.slice(1)) this._window(B, at, (o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, -D / 2 + T / 2, o.x1 - o.x0, o.y1 - o.y0, true);
-    for (const s of [-1, 1])
-      for (const z of [0.9, -1.9]) {
-        const m = base.clone().multiply(mtx(s * (W / 2 - T / 2), 0, z, 0, Math.PI / 2, 0));
-        this._window(B, (x, y, zz, rx, ry, rz) => m.clone().multiply(mtx(x, y, zz, rx, ry, rz)), 0, 1.65, 0, 1.4, 1.4, true);
+    const toWorld = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyMatrix4(base);
+    // Local frame: +z is the front (facing the bridge and the lake), x along the facade.
+    // Single storey, cream plaster between dark oak timbers, round-headed doors and windows, and
+    // heavy rounded thatch over several wings (as on the set).
+    const H = 2.7, T = 0.35;
+    const CREAM = 0xd6b25e; // ochre lime plaster, as on the set
+    const THATCH = 0xffffff; // the thatch material carries its own weathered grey-brown
+    // Wings: [center x, center z, width, depth, wall height, roof rise]
+    const wings = [
+      { x: 0, z: 0, w: 19, d: 9, h: H, rise: 4.0 }, // main hall
+      { x: -12.4, z: -1.2, w: 6.4, d: 8.4, h: H - 0.1, rise: 3.6 }, // west wing (kitchen, big chimney)
+      { x: 12.2, z: 1.2, w: 6, d: 6.6, h: H - 0.2, rise: 3.2 }, // east snug
+      { x: 4, z: -8.5, w: 9, d: 6.5, h: H - 0.2, rise: 3.3 }, // back wing
+    ];
+    const doorW = 1.7;
+    for (const [wi, wg] of wings.entries()) {
+      const wat = (x, y, z, rx, ry, rz) => at(wg.x + x, y, wg.z + z, rx, ry, rz);
+      B.add('stone', box(wg.w + 0.4, 0.45, wg.d + 0.4), wat(0, -0.1, 0), STONE_DARK);
+      // Openings on the front: arched windows, and the main door in the hall.
+      const front = [];
+      const nWin = Math.max(1, Math.round(wg.w / 3.3));
+      for (let k = 0; k < nWin; k++) {
+        const x = -wg.w / 2 + ((k + 0.5) * wg.w) / nWin;
+        if (wi === 0 && Math.abs(x) < 2) continue;
+        front.push({ x0: x - 0.55, x1: x + 0.55, y0: 0.85, y1: 2.0, arch: true });
       }
-
-    // Upper storey: jettied, plaster between dark timbers, with a row of windows.
-    B.add('plaster', box(W + j * 2, H2, D + j * 2), at(0, H1 + H2 / 2, 0), PLASTER);
-    for (const s of [-1, 1]) {
-      const zf = s * (D / 2 + j + 0.02);
-      for (let x = -W / 2 - j; x <= W / 2 + j + 0.01; x += (W + 2 * j) / 8) B.add('wood', box(0.18, H2, 0.07), at(x, H1 + H2 / 2, zf), TIMBER);
-      B.add('wood', box(W + j * 2 + 0.1, 0.22, 0.1), at(0, H1 + 0.11, zf), TIMBER);
-      B.add('wood', box(W + j * 2 + 0.1, 0.18, 0.1), at(0, H1 + H2 - 0.09, zf), TIMBER);
-      for (let k = 0; k < 7; k++) {
-        const x = -W / 2 - j + ((k + 0.5) * (W + 2 * j)) / 8;
-        B.add('wood', box(0.12, 1.8, 0.07), at(x, H1 + H2 / 2, zf, 0, 0, (k % 2 ? 1 : -1) * 0.55), TIMBER);
+      if (wi === 0) front.push({ x0: -doorW / 2, x1: doorW / 2, y0: 0.15, y1: 2.1, arch: true, door: true });
+      if (wi === 2) front.push({ x0: -0.5, x1: 0.5, y0: 0.15, y1: 1.95, arch: true, door: true });
+      const sides = [
+        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, 0, 0).multiply(mtx(0, 0, wg.d / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.w, open: front },
+        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, Math.PI, 0).multiply(mtx(0, 0, wg.d / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.w, open: [{ x0: -0.55, x1: 0.55, y0: 0.85, y1: 2.0, arch: true }] },
+        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, Math.PI / 2, 0).multiply(mtx(0, 0, wg.w / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.d, open: wi === 1 ? [] : [{ x0: -0.55, x1: 0.55, y0: 0.85, y1: 2.0, arch: true }] },
+        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, -Math.PI / 2, 0).multiply(mtx(0, 0, wg.w / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.d, open: wi === 2 ? [] : [{ x0: -0.55, x1: 0.55, y0: 0.85, y1: 2.0, arch: true }] },
+      ];
+      for (const sd of sides) {
+        // Skip wall faces buried inside a neighboring wing.
+        wall(B, 'plaster', sd.at, -sd.len / 2, sd.len / 2, 0, 0, wg.h, T, sd.open, CREAM);
+        // Timber: sill beam, wall plate, posts, and curved braces.
+        B.add('wood', box(sd.len + 0.1, 0.2, 0.1), sd.at(0, 0.1, T / 2 + 0.03), TIMBER);
+        B.add('wood', box(sd.len + 0.1, 0.22, 0.1), sd.at(0, wg.h - 0.11, T / 2 + 0.03), TIMBER);
+        const posts = Math.max(2, Math.round(sd.len / 2.2));
+        for (let k = 0; k <= posts; k++) {
+          const x = -sd.len / 2 + (k * sd.len) / posts;
+          if (sd.open.some((o) => x > o.x0 - 0.12 && x < o.x1 + 0.12)) continue;
+          B.add('wood', box(0.16, wg.h, 0.1), sd.at(x, wg.h / 2, T / 2 + 0.03), TIMBER);
+          for (const s of [-1, 1]) {
+            if (sd.open.some((o) => x + s * 0.6 > o.x0 - 0.1 && x + s * 0.6 < o.x1 + 0.1)) continue;
+            B.add('wood', new THREE.TorusGeometry(0.55, 0.05, 5, 8, Math.PI / 2), sd.at(x + s * 0.55, wg.h - 0.75, T / 2 + 0.05, 0, 0, s > 0 ? Math.PI / 2 : 0), TIMBER);
+          }
+          // Diagonal braces across the plain panel to the right of this post.
+          const nx = x + sd.len / posts;
+          if (k < posts && !sd.open.some((o) => o.x1 > x - 0.1 && o.x0 < nx + 0.1)) {
+            const pw = nx - x, ph = wg.h - 0.45, ang = Math.atan2(ph, pw), len = Math.hypot(pw, ph);
+            for (const s of [-1, 1]) B.add('wood', box(len, 0.12, 0.08), sd.at(x + pw / 2, 0.22 + ph / 2, T / 2 + 0.06, 0, 0, s * ang), TIMBER);
+          }
+        }
+        // Round-headed openings: timber arch, glazing (lit), or a glowing doorway.
+        for (const o of sd.open) {
+          const cx = (o.x0 + o.x1) / 2, r = (o.x1 - o.x0) / 2, top = o.y1;
+          B.add('wood', new THREE.TorusGeometry(r + 0.06, 0.08, 6, 16, Math.PI), sd.at(cx, top, T / 2 + 0.04), TIMBER);
+          B.add('plaster', box(o.x1 - o.x0, r, T), sd.at(cx, top + r / 2, 0), CREAM); // filled above the arch spring
+          if (o.door) {
+            B.add('glass', box(o.x1 - o.x0 - 0.05, o.y1 - o.y0 + r * 0.6, 0.05), sd.at(cx, (o.y0 + o.y1 + r * 0.6) / 2, -T / 2 + 0.05), 0xff0000);
+            B.add('paint', box((o.x1 - o.x0) / 2, o.y1 - o.y0, 0.07), sd.at(o.x0, (o.y0 + o.y1) / 2, T / 2 + 0.3, 0, 1.3, 0).multiply(mtx((o.x1 - o.x0) / 4, 0, 0)), 0x2f5a34);
+          } else {
+            const disc = new THREE.CircleGeometry(r, 16, 0, Math.PI);
+            B.add('glass', box(o.x1 - o.x0, o.y1 - o.y0, 0.04), sd.at(cx, (o.y0 + o.y1) / 2, 0), 0xff0000);
+            B.add('glass', disc, sd.at(cx, top, 0.03), 0xff0000);
+            B.add('wood', box(0.06, o.y1 - o.y0 + r, 0.06), sd.at(cx, (o.y0 + o.y1 + r) / 2, 0.05), TIMBER);
+            for (const y of [o.y0 + (o.y1 - o.y0) * 0.5, o.y1]) B.add('wood', box(o.x1 - o.x0, 0.05, 0.06), sd.at(cx, y, 0.05), TIMBER);
+            B.add('wood', box(o.x1 - o.x0 + 0.2, 0.08, 0.28), sd.at(cx, o.y0 - 0.04, T / 2 + 0.08), TIMBER);
+          }
+        }
       }
-      for (const x of [-4.3, 0, 4.3]) this._window(B, at, x, H1 + 1.45, s * (D / 2 + j), 1.1, 1.0, s > 0 || x !== 0);
+      // Thatch.
+      B.add('thatch', thatchRoof(wg.w + 1.5, wg.d + 1.7, wg.rise, { hip: 5, side: 1.35 }), wat(0, wg.h - 0.3, 0), THATCH);
     }
+    // Eyebrow dormer over the main door: a small thatch hood with a round window.
+    B.add('thatch', thatchRoof(3.6, 3.0, 1.6, { hip: 2.4, side: 1.5 }), at(0, H + 1.3, 4.6, 0.1, 0, 0), THATCH);
+    B.add('plaster', box(2.8, 1.3, 0.3), at(0, H + 0.6, 4.3), CREAM);
+    B.add('glass', new THREE.CircleGeometry(0.42, 20), at(0, H + 0.8, 4.47), 0xff0000);
+    B.add('wood', new THREE.TorusGeometry(0.45, 0.06, 6, 20), at(0, H + 0.8, 4.47), TIMBER);
+
+    // Round turret at the west corner, with a conical thatch cap.
+    {
+      const tx = -16.2, tz = 2.2, r = 2.1;
+      B.add('plaster', cylinder(r, r, H + 0.2, 20), at(tx, (H + 0.2) / 2, tz), CREAM);
+      for (let k = 0; k < 8; k++) {
+        const a = (k / 8) * Math.PI * 2;
+        B.add('wood', box(0.14, H + 0.2, 0.08), at(tx + Math.cos(a) * (r + 0.02), (H + 0.2) / 2, tz + Math.sin(a) * (r + 0.02), 0, -a + Math.PI / 2, 0), TIMBER);
+      }
+      B.add('glass', new THREE.CircleGeometry(0.38, 18), at(tx + 0.3, 1.5, tz + r + 0.03, 0, 0.15, 0), 0xff0000);
+      B.add('wood', new THREE.TorusGeometry(0.42, 0.06, 6, 18), at(tx + 0.3, 1.5, tz + r + 0.04, 0, 0.15, 0), TIMBER);
+      B.add('thatch', thatchRoof(r * 2 + 1.3, r * 2 + 1.3, 3.2, { hip: 2, side: 1.3 }), at(tx, H, tz), THATCH);
+      const p = toWorld(tx, tz);
+      this.colliders.push({ x: p.x, z: p.z, r: r + 0.1 });
+    }
+
+    // Chimneys: a big fieldstone stack on the west end, brick stacks through the thatch.
+    B.add('stone', box(1.5, 7.6, 1.3), at(-15.9, 3.6, -1.6), STONE);
+    B.add('stone', box(1.1, 0.25, 1.1), at(-15.9, 7.5, -1.6), STONE_DARK);
+    this.chimneys.push(toWorld(-15.9, -1.6).setY(G.y + 7.8));
+    for (const [x, z, h] of [[-4.4, -1.8, 7.4], [5.6, -1.4, 7.2], [12.4, 1.0, 6.0], [4, -9, 6.4]]) {
+      B.add('brick', box(0.75, h - 1.5, 0.75), at(x, 1.5 + (h - 1.5) / 2, z), 0x9a5236);
+      B.add('brick', cylinder(0.13, 0.15, 0.4, 10), at(x, h + 0.2, z), 0xa8603e);
+      this.chimneys.push(toWorld(x, z).setY(G.y + h + 0.45));
+    }
+
+    // Hanging sign on a bracket, lamps by the door, a lamp post on the forecourt.
+    B.add('metal', box(0.06, 0.06, 1.2), at(-doorW / 2 - 1.4, 2.6, 4.6), 0x2a2a2a);
+    B.add('paint', box(0.06, 0.9, 0.75), at(-doorW / 2 - 1.4, 2.05, 5.0), 0x2f5a34);
+    B.add('paint', box(0.07, 0.5, 0.42), at(-doorW / 2 - 1.4, 2.05, 5.0), 0xc8a232);
     for (const s of [-1, 1]) {
-      const zf = s * (W / 2 + j + 0.02);
-      const m = base.clone().multiply(mtx(0, 0, 0, 0, Math.PI / 2, 0));
-      for (let x = -D / 2 - j; x <= D / 2 + j + 0.01; x += (D + 2 * j) / 5) B.add('wood', box(0.18, H2, 0.07), m.clone().multiply(mtx(x, H1 + H2 / 2, zf)), TIMBER);
+      B.add('metal', box(0.2, 0.3, 0.2), at(s * (doorW / 2 + 0.35), 2.15, 4.25), 0x2a2a2a);
+      B.add('glass', box(0.14, 0.22, 0.14), at(s * (doorW / 2 + 0.35), 2.15, 4.25), 0xff0000);
+      this.lamps.push(toWorld(s * (doorW / 2 + 0.35), 4.45).setY(G.y + 2.15));
     }
+    B.add('metal', box(0.09, 2.6, 0.09), at(1.5, 1.3, 9.5), 0x2a2622);
+    B.add('metal', box(0.26, 0.36, 0.26), at(1.5, 2.75, 9.5), 0x2a2622);
+    B.add('glass', box(0.18, 0.26, 0.18), at(1.5, 2.75, 9.5), 0xff0000);
+    this.lamps.push(toWorld(1.5, 9.5).setY(G.y + 2.75));
 
-    // Main roof, plus a cross gable over the entrance, two chimneys.
-    gableRoof(B, at, W + j * 2, D + j * 2, H1 + H2, 0.72, 0.55, ROOF);
-    const cg = base.clone().multiply(mtx(0, 0, D / 2 - 1.0, 0, Math.PI / 2, 0));
-    gableRoof(B, (x, y, z, rx, ry, rz) => cg.clone().multiply(mtx(x, y, z, rx, ry, rz)), 4.0, 4.4, H1 + H2 - 0.2, 0.8, 0.4, ROOF);
-    for (const x of [-W / 2 + 1.5, W / 2 - 2.2]) {
-      B.add('brick', box(0.8, 5.5, 0.8), at(x, H1 + H2 + 1.6, -1.4), 0x9a5236);
-      B.add('brick', cylinder(0.12, 0.14, 0.4, 10), at(x, H1 + H2 + 4.5, -1.4), 0xa8603e);
-      this.chimneys.push(new THREE.Vector3(x, H1 + H2 + 4.8, -1.4).applyMatrix4(base));
-    }
-
-    // Porch canopy over the door with the hanging sign.
-    for (const s of [-1, 1]) B.add('wood', box(0.2, 2.9, 0.2), at(s * 1.35, 1.45, D / 2 + 1.7), TIMBER);
-    B.add('roof', box(3.3, 0.12, 2.1), at(0, 3.05, D / 2 + 1.0, 0.22), ROOF);
-    B.add('metal', box(0.06, 0.06, 1.3), at(-2.3, 3.0, D / 2 + 0.65), 0x2a2a2a);
-    B.add('paint', box(0.06, 0.95, 0.8), at(-2.3, 2.45, D / 2 + 1.0), 0x2f6b3a); // the sign
-    B.add('paint', box(0.07, 0.55, 0.45), at(-2.3, 2.45, D / 2 + 1.0), 0xc8a232); // dragon emblem
-
-    // Lanterns either side of the door.
-    for (const s of [-1, 1]) {
-      B.add('metal', box(0.22, 0.34, 0.22), at(s * 1.1, 2.55, D / 2 + 0.2), 0x2a2a2a);
-      B.add('glass', box(0.16, 0.26, 0.16), at(s * 1.1, 2.55, D / 2 + 0.2), 0xff0000);
-      this.lamps.push(new THREE.Vector3(s * 1.1, 2.55, D / 2 + 0.4).applyMatrix4(base));
-    }
-
-    // Outdoor tables and benches in the forecourt, and barrels.
-    const tables = [[-4.5, 4.2], [4.5, 4.2], [-4.8, 7.4], [4.2, 7.6]];
+    // Cobbled forecourt path to the lane, tables, barrels.
+    for (let z = 4.5; z < 11; z += 0.5)
+      for (let x = -1.4; x <= 1.4; x += 0.45)
+        B.add('stone', box(0.4, 0.07, 0.42), at(x + (Math.round(z * 2) % 2) * 0.22, 0.02, z), [0x8f897d, 0xa29b8c, 0x7f7a70][Math.floor(Math.abs(Math.sin(x * 12.9 + z * 78.2)) * 3)]);
+    const tables = [[-5.5, 6.8], [5.2, 7.0], [-6.5, 9.8]];
     for (const [x, z] of tables) {
-      B.add('wood', box(2.0, 0.08, 0.85), at(x, 0.75, D / 2 + z - D / 2 + 1), 0x7a5a3e);
+      B.add('wood', box(2.0, 0.08, 0.85), at(x, 0.75, z), 0x7a5a3e);
       for (const s of [-1, 1]) {
-        B.add('wood', box(0.1, 0.72, 0.7), at(x + s * 0.8, 0.37, D / 2 + z - D / 2 + 1), 0x5a4130);
-        B.add('wood', box(2.0, 0.07, 0.3), at(x, 0.45, D / 2 + z - D / 2 + 1 + s * 0.65), 0x7a5a3e);
+        B.add('wood', box(0.1, 0.72, 0.7), at(x + s * 0.8, 0.37, z), 0x5a4130);
+        B.add('wood', box(2.0, 0.07, 0.3), at(x, 0.45, z + s * 0.65), 0x7a5a3e);
       }
-      const [wx, wz] = [G.x + (x * Math.cos(G.yaw) + (z + 1) * Math.sin(G.yaw)), G.z + (-x * Math.sin(G.yaw) + (z + 1) * Math.cos(G.yaw))];
-      this.colliders.push({ x: wx, z: wz, hx: 1.1, hz: 0.8, rot: G.yaw });
+      const p = toWorld(x, z);
+      this.colliders.push({ x: p.x, z: p.z, hx: 1.1, hz: 0.8, rot: G.yaw });
     }
-    for (const [x, z] of [[W / 2 + 0.7, 2.2], [W / 2 + 0.7, 3.1], [-W / 2 - 0.7, 3.8]]) {
+    for (const [x, z] of [[7.9, 4.6], [8.7, 4.9], [-12.4, 3.2]]) {
       B.add('wood', cylinder(0.36, 0.4, 0.95, 14), at(x, 0.47, z), 0x6e4e32);
       for (const y of [0.18, 0.76]) B.add('metal', cylinder(0.405, 0.405, 0.05, 14, true), at(x, y, z), 0x3a3632);
     }
 
-    // Walls as colliders, leaving the door open.
-    const toWorld = (lx, lz) => [G.x + lx * Math.cos(G.yaw) + lz * Math.sin(G.yaw), G.z - lx * Math.sin(G.yaw) + lz * Math.cos(G.yaw)];
-    const wallC = (lx, lz, hx, hz) => { const [x, z] = toWorld(lx, lz); this.colliders.push({ x, z, hx, hz, rot: G.yaw }); };
-    const fw = (W / 2 - doorW / 2) / 2;
-    wallC(-doorW / 2 - fw, D / 2 - T / 2, fw, T / 2);
-    wallC(doorW / 2 + fw, D / 2 - T / 2, fw, T / 2);
-    wallC(0, -D / 2 + T / 2, W / 2, T / 2);
-    wallC(-W / 2 + T / 2, 0, T / 2, D / 2);
-    wallC(W / 2 - T / 2, 0, T / 2, D / 2);
-    // Porch posts.
-    for (const s of [-1, 1]) { const [x, z] = toWorld(s * 1.35, D / 2 + 1.7); this.colliders.push({ x, z, r: 0.15 }); }
+    // Walls as colliders, leaving the doors open.
+    for (const [wi, wg] of wings.entries()) {
+      const box2 = (lx, lz, hx, hz) => { const p = toWorld(wg.x + lx, wg.z + lz); this.colliders.push({ x: p.x, z: p.z, hx, hz, rot: G.yaw }); };
+      const gap = wi === 0 ? doorW / 2 : wi === 2 ? 0.5 : 0;
+      if (gap) {
+        const fw = (wg.w / 2 - gap) / 2;
+        box2(-gap - fw, wg.d / 2 - T / 2, fw, T / 2);
+        box2(gap + fw, wg.d / 2 - T / 2, fw, T / 2);
+      } else box2(0, wg.d / 2 - T / 2, wg.w / 2, T / 2);
+      box2(0, -wg.d / 2 + T / 2, wg.w / 2, T / 2);
+      box2(-wg.w / 2 + T / 2, 0, T / 2, wg.d / 2);
+      box2(wg.w / 2 - T / 2, 0, T / 2, wg.d / 2);
+    }
     this.gdFloorY = G.y + 0.25;
   }
 

@@ -11,9 +11,12 @@ import { Vegetation } from './world/Vegetation.js';
 import { makeMaterials } from './world/Kit.js';
 import { HobbitHoles } from './world/Holes.js';
 import { Buildings } from './world/Buildings.js';
+import { Shrubs } from './world/Shrubs.js';
+import { Boundaries } from './world/Boundaries.js';
 import { Player } from './player/Player.js';
 import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
+import { LAYERS, setLayer } from './core/Layers.js';
 
 export class App {
   async init(container, progress) {
@@ -52,7 +55,7 @@ export class App {
     this.maps = new GroundMaps(this.terrain);
     this.grass = new Grass(this.maps, this.sky);
     scene.add(this.grass.group);
-    camera.layers.enable(1);
+    for (const l of [LAYERS.NO_REFLECT, LAYERS.DETAIL, LAYERS.TERRAIN]) camera.layers.enable(l);
 
     progress('Planting the trees');
     await tick();
@@ -62,8 +65,14 @@ export class App {
     progress('Digging the hobbit holes');
     await tick();
     this.mats = makeMaterials(this.sky, this.terrain.groundNoise);
-    this.holes = new HobbitHoles(this.mats);
+    this.shrubs = new Shrubs(this.vegetation);
+    this.holes = new HobbitHoles(this.mats, this.shrubs);
     scene.add(this.holes.group);
+    this.boundaries = new Boundaries(this.mats, this.shrubs);
+    scene.add(this.boundaries.group);
+    setLayer(this.boundaries.group, LAYERS.DETAIL);
+    scene.add(this.shrubs.build());
+    setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
 

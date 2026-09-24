@@ -13,7 +13,8 @@ import {
   normalize, reflect, dot, max, pow, mix, saturate, smoothstep, exp, reflector, uv,
   viewportDepthTexture, viewportSharedTexture, perspectiveDepthToViewZ, cameraNear, cameraFar,
 } from 'three/tsl';
-import { LANDMARKS, WATER_Y, STREAM, streamWaterAt } from './Layout.js';
+import { LAYERS } from '../core/Layers.js';
+import { WATER_Y, STREAMS, LAKE_SDF, POND_SDF, POND_Y, streamWaterAt } from './Layout.js';
 
 export class Water {
   constructor(sky, noiseTex) {
@@ -24,14 +25,9 @@ export class Water {
     this.windDir = uniform(new THREE.Vector2(0.7, -0.7));
     this.group = new THREE.Group();
 
-    const L = LANDMARKS.lake;
-    const geo = new THREE.CircleGeometry(1, 128);
-    geo.rotateX(-Math.PI / 2);
-    this.lake = new THREE.Mesh(geo);
-    this.lake.scale.set(L.rx * 1.3, 1, L.rz * 1.3);
-    this.lake.rotation.y = L.rot || 0;
-    this.lake.position.set(L.x, WATER_Y, L.z);
-
+    // Lake and pond surfaces: a 2 m grid over every cell within a few meters of open water (the
+    // terrain hides the overlap past the shoreline).
+    this.lake = new THREE.Mesh(this._surface(LAKE_SDF, WATER_Y));
     this.reflection = reflector({ resolutionScale: 0.5, bounces: false });
     // The mirrored camera is a clone of the main one, layers included. Limit it to layer 0 so the
     // reflection skips grass and water (both on layer 1).
@@ -39,20 +35,52 @@ export class Water {
     const getVirtualCamera = base.getVirtualCamera.bind(base);
     base.getVirtualCamera = (camera) => {
       const v = getVirtualCamera(camera);
-      v.layers.set(0);
+      v.layers.set(LAYERS.BASE);
+      v.layers.enable(LAYERS.TERRAIN);
       return v;
     };
     this.reflection.target.rotateX(-Math.PI / 2);
-    this.reflection.target.position.set(L.x, WATER_Y, L.z);
+    this.reflection.target.position.set(LAKE_SDF.x0 + (LAKE_SDF.nx * LAKE_SDF.res) / 2, WATER_Y, LAKE_SDF.z0 + (LAKE_SDF.nz * LAKE_SDF.res) / 2);
     this.group.add(this.reflection.target);
     this.lake.material = this._material({ reflection: this.reflection, flow: null });
     this.group.add(this.lake);
 
-    this.stream = new THREE.Mesh(this._streamGeometry(), this._material({ reflection: null, flow: 1.1 }));
-    this.group.add(this.stream);
-    // Water never appears in the reflection pass (its screen-space refraction would fight over the
-    // shared viewport copy at the reflection's resolution).
-    for (const m of [this.lake, this.stream]) m.layers.set(1);
+    this.pond = new THREE.Mesh(this._surface(POND_SDF, POND_Y), this._material({ reflection: null, flow: null }));
+    this.group.add(this.pond);
+
+    const streamMat = this._material({ reflection: null, flow: 0.9 });
+    this.streams = STREAMS.map((st) => new THREE.Mesh(this._streamGeometry(st), streamMat));
+    this.group.add(...this.streams);
+    // Water never appears in the reflection pass.
+    for (const m of [this.lake, this.pond, ...this.streams]) m.layers.set(LAYERS.NO_REFLECT);
+  }
+
+  _surface(sdf, y, cell = 2) {
+    const pos = [], idx = [];
+    const step = Math.round(cell / sdf.res);
+    const cols = Math.floor((sdf.nx - 1) / step), rows = Math.floor((sdf.nz - 1) / step);
+    const vid = new Int32Array((cols + 1) * (rows + 1)).fill(-1);
+    const vert = (i, j) => {
+      const k = j * (cols + 1) + i;
+      if (vid[k] < 0) {
+        vid[k] = pos.length / 3;
+        pos.push(sdf.x0 + i * step * sdf.res, y, sdf.z0 + j * step * sdf.res);
+      }
+      return vid[k];
+    };
+    for (let j = 0; j < rows; j++)
+      for (let i = 0; i < cols; i++) {
+        const d = sdf.d[(j * step + (step >> 1)) * sdf.nx + i * step + (step >> 1)];
+        if (d > 6) continue;
+        const a = vert(i, j), b = vert(i + 1, j), c = vert(i, j + 1), e = vert(i + 1, j + 1);
+        idx.push(a, c, b, b, c, e);
+      }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+    return g;
   }
 
   /** Ripple normal from a few scrolling noise octaves (finite differences on a height field). */
@@ -110,10 +138,10 @@ export class Water {
     return m;
   }
 
-  _streamGeometry() {
+  _streamGeometry(stream) {
     // A ribbon along the stream in 1 m steps, wide enough to meet the banks; the surface follows
     // the bed profile down to the lake.
-    const pts = STREAM.smooth;
+    const pts = stream.pts;
     const samples = [];
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
@@ -121,7 +149,7 @@ export class Water {
       for (let k = 0; k < steps; k++) samples.push([ax + ((bx - ax) * k) / steps, az + ((bz - az) * k) / steps]);
     }
     samples.push(pts[pts.length - 1]);
-    const half = STREAM.width * 0.5 + 1.0;
+    const half = stream.width * 0.5 + 0.8;
     const pos = [], uvs = [], idx = [];
     let along = 0;
     for (let i = 0; i < samples.length; i++) {
@@ -131,7 +159,7 @@ export class Water {
       const l = Math.hypot(dx, dz) || 1;
       dx /= l; dz /= l;
       if (i > 0) along += Math.hypot(x - samples[i - 1][0], z - samples[i - 1][1]);
-      const y = Math.max(streamWaterAt(x, z), WATER_Y);
+      const y = streamWaterAt(x, z);
       for (const s of [-1, 1]) {
         pos.push(x - dz * half * s, y, z + dx * half * s);
         uvs.push(s * half, along);

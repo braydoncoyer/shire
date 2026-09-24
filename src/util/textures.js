@@ -3,7 +3,7 @@
 
 import * as THREE from 'three/webgpu';
 import { tileFbm2, makeWorley2, makeWorley3, smoothstep, clamp } from './noise.js';
-import { LANE_TEXTURE } from '../world/Layout.js';
+import { LANE_TEXTURE, lakeDist, pondDist, INNER_HALF } from '../world/Layout.js';
 
 function dataTex(data, w, h, { format = THREE.RGBAFormat, mips = true } = {}) {
   const t = new THREE.DataTexture(data, w, h, format, THREE.UnsignedByteType);
@@ -97,6 +97,23 @@ export function makeLaneTexture() {
     data[k * 4 + 3] = bed[k];
   }
   const t = dataTex(data, n, n);
+  t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
+}
+
+/** Signed distance to open water (lake or pond), 1 m texels over the inner region. R: 0.5 + d/60. */
+export function makeWaterTexture() {
+  const n = INNER_HALF * 2;
+  const data = new Uint8Array(n * n * 4);
+  for (let j = 0; j < n; j++)
+    for (let i = 0; i < n; i++) {
+      const x = i + 0.5 - INNER_HALF, z = j + 0.5 - INNER_HALF;
+      const d = Math.min(lakeDist(x, z), pondDist(x, z));
+      const k = (j * n + i) * 4;
+      data[k] = b(0.5 + d / 60);
+      data[k + 3] = 255;
+    }
+  const t = dataTex(data, n, n, { mips: false });
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;
 }

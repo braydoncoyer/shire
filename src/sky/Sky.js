@@ -206,7 +206,8 @@ export class Sky {
       const wp = u.invViewProj.mul(vec4(ndc, 0.5, 1));
       const dir = normalize(wp.xyz.div(wp.w).sub(u.camPos)).toVar();
 
-      const sky = this.sampleSky(dir).toVar();
+      // Below the horizon (only visible past the edge of the terrain) show the horizon haze.
+      const sky = this.sampleSky(normalize(vec3(dir.x, max(dir.y, 0.012), dir.z))).toVar();
       const night = u.night;
       // Faint airglow so the night sky isn't pure black.
       sky.addAssign(vec3(0.0012, 0.002, 0.0045).mul(night).mul(smoothstep(-0.2, 0.4, dir.y).mul(0.6).add(0.4)));

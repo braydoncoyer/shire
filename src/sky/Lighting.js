@@ -3,6 +3,7 @@
 
 import * as THREE from 'three/webgpu';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
+import { LAYERS } from '../core/Layers.js';
 import { evaluateLighting, luminance } from './Atmosphere.js';
 import { sunDirection, moonDirection } from './SunPosition.js';
 
@@ -21,6 +22,10 @@ export class Lighting {
     light.shadow.normalBias = 0.04;
     light.shadow.camera.near = 1;
     light.shadow.camera.far = 2000;
+    // The shadow maps draw base geometry, detail and the terrain proxy (see core/Layers.js).
+    light.shadow.camera.layers.set(LAYERS.BASE);
+    light.shadow.camera.layers.enable(LAYERS.SHADOW_ONLY);
+    light.shadow.camera.layers.enable(LAYERS.DETAIL);
     this.csm = new CSMShadowNode(light, { cascades: 4, maxFar: 420, mode: 'practical', lightMargin: 220 });
     this.csm.fade = true;
     light.shadow.shadowNode = this.csm;

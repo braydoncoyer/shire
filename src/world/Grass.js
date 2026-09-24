@@ -19,6 +19,7 @@ import {
   uv, select,
 } from 'three/tsl';
 import { WATER_Y, LANDMARKS } from './Layout.js';
+import { LAYERS } from '../core/Layers.js';
 
 const PF = LANDMARKS.partyField;
 
@@ -32,7 +33,7 @@ export const GRASS = {
 // Wildflower tints: buttercup, daisy, clover, cornflower, poppy, lavender.
 const FLOWERS = [0xf2cf2a, 0xf4f1e6, 0xd98ab8, 0x5f7fd6, 0xd8402a, 0x9a76c9];
 
-const LAYERS = [
+const COVER = [
   { name: 'near', kind: 'turf', spacing: 0.075, W: 480, seg: 5, width: 0.05, fadeIn: null, rootShade: 0.4 },
   { name: 'mid', kind: 'turf', spacing: 0.18, W: 480, seg: 3, width: 0.085, fadeIn: [12, 16.5], rootShade: 0.55 },
   { name: 'far', kind: 'turf', spacing: 0.42, W: 460, seg: 1, width: 0.2, fadeIn: [36, 42], rootShade: 0.8 },
@@ -132,7 +133,7 @@ export class Grass {
     this.projView = new THREE.Matrix4();
     this.flowerTex = flowerTexture();
     this.group = new THREE.Group();
-    this.layers = LAYERS.map((L) => this._layer(L));
+    this.layers = COVER.map((L) => this._layer(L));
   }
 
   _layer(L) {
@@ -159,7 +160,7 @@ export class Grass {
     mesh.frustumCulled = false;
     mesh.receiveShadow = true;
     mesh.castShadow = false;
-    mesh.layers.set(1); // keep ground cover out of the water reflection pass
+    mesh.layers.set(LAYERS.NO_REFLECT);
     mesh.userData = { L };
     layer.mesh = mesh;
     this.group.add(mesh);
@@ -177,7 +178,7 @@ export class Grass {
     if (L.kind === 'reed') {
       // A band along the lake shore and the stream banks, in clumps.
       const ld = maps.lakeDist(xz);
-      const lakeBand = smoothstep(0.86, 0.95, ld).mul(float(1).sub(smoothstep(1.0, 1.08, ld)));
+      const lakeBand = smoothstep(-1.8, -0.4, ld).mul(float(1).sub(smoothstep(1.5, 3.5, ld)));
       const streamBand = smoothstep(0.12, 0.35, lanes.g).mul(float(1).sub(smoothstep(0.55, 0.8, lanes.g)));
       const clump = smoothstep(0.35, 0.6, n2.r.mul(0.6).add(maps.noise(xz, 13).g.mul(0.5)));
       const band = max(lakeBand, streamBand).mul(clump).mul(float(1).sub(smoothstep(0.02, 0.2, lanes.r)));

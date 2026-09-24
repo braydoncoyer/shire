@@ -1,14 +1,15 @@
 // GPU-side access to the ground: height, lanes, the stream and the lake, so instanced vegetation
 // can be placed entirely in the vertex shader.
 
-import { Fn, textureLoad, texture, vec2, ivec2, float, floor, mix, clamp, smoothstep, sqrt } from 'three/tsl';
-import { INNER_HALF, LANDMARKS, WATER_Y } from './Layout.js';
+import { Fn, textureLoad, texture, ivec2, float, floor, mix, clamp, smoothstep } from 'three/tsl';
+import { INNER_HALF, WATER_Y } from './Layout.js';
 
 export class GroundMaps {
   constructor(terrain) {
     this.heightTex = terrain.heightTex;
     this.laneTex = terrain.laneTex;
     this.noiseTex = terrain.groundNoise;
+    this.waterTex = terrain.waterTex;
     this.m = terrain.heights.m; // grid size including the 1-cell border
   }
 
@@ -33,19 +34,14 @@ export class GroundMaps {
     return texture(this.laneTex, xz.add(INNER_HALF).div(INNER_HALF * 2));
   }
 
-  /** Normalized distance from the lake's center: < 1 inside the lake ellipse. */
+  /** Signed distance (m) to the lake or pond shore, negative over water. */
   lakeDist(xz) {
-    const L = LANDMARKS.lake;
-    const c = Math.cos(L.rot), s = Math.sin(L.rot);
-    const d = xz.sub(vec2(L.x, L.z));
-    const u = d.x.mul(c).sub(d.y.mul(s)).div(L.rx);
-    const v = d.x.mul(s).add(d.y.mul(c)).div(L.rz);
-    return sqrt(u.mul(u).add(v.mul(v)));
+    return texture(this.waterTex, xz.add(INNER_HALF).div(INNER_HALF * 2)).r.sub(0.5).mul(60);
   }
 
-  /** 1 inside the lake ellipse, 0 on dry land. */
+  /** 1 over open water, 0 on dry land. */
   lake(xz) {
-    return float(1).sub(smoothstep(0.82, 1.05, this.lakeDist(xz)));
+    return float(1).sub(smoothstep(-2.5, 0.3, this.lakeDist(xz)));
   }
 
   noise(xz, scale) {

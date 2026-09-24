@@ -29,6 +29,28 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 
 `?time=19.2&clouds=0.5&cirrus=0.6&haze=0.4&ev=0.5&cam=x,y,z,yaw,pitch&fly`
 
+## Accuracy and data
+
+The layout is built from real geodata, not guesswork:
+
+- **Terrain:** LINZ NZ 8 m DEM around the set, plus an 80 m grid out to the surrounding hills
+  (via OpenTopoData). The real hill, valley floor and lake bowl.
+- **Features:** OpenStreetMap: the lake (Bywater Pool) and Frog Pond shorelines, Mill Run and Eel Brook,
+  every named lane (Bagshot Row, Hill Lane, Gully, Woody End, Lakeside, Merry Meander, Bywater Road,
+  Gandalf's Cutting…), hedges, fences, woods, the Mill, the Green Dragon, the Bywater Bridge, the
+  Party Tree and Bag End's oak.
+- **Hobbit holes:** 44, the set's count. Bag End and the Bagshot Row holes are at their mapped spots; the
+  rest are placed along the real lanes, dug into the banks. No public dataset records each hole's exact
+  position, so those are placed by rule. `docs/holes-map.svg` shows them over the OSM map.
+- **Sun:** the set's latitude (37.86°S), midsummer. Bag End faces east-south-east, so the evening sun
+  sets behind the Hill.
+
+Research notes are in `docs/hobbiton-reference.md`. To refresh the data:
+`python3 scripts/fetch_dem.py set && python3 scripts/fetch_dem.py wide && python3 scripts/build_geodata.py`
+(the OSM extract in `data/osm_raw.json` comes from an Overpass query; see the reference doc).
+
+Attribution: map data © OpenStreetMap contributors (ODbL); elevation © LINZ (CC BY 4.0).
+
 ## How it's built
 
 | Folder | Contents |

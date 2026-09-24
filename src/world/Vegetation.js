@@ -6,41 +6,44 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, uniform, texture, uv, vec3, vec4, float, instanceIndex, hash, sin, mix, pow, max, positionLocal,
   positionWorld, cameraPosition, normalize, dot, saturate, smoothstep, normalViewGeometry, color, uint, fwidth,
+  attribute, select,
 } from 'three/tsl';
 import { buildTree, leafTexture, SPECIES } from './TreeGen.js';
 import {
-  heightAt, laneMask, streamMask, lakeFactor, LANDMARKS, STREAM, WALK_RADIUS, MILL, BRIDGE, HOLES,
+  heightAt, laneMask, streamMask, lakeFactor, lakeDist, pondDist, yardAt, LANDMARKS, STREAMS, WALK_RADIUS, MILL, BRIDGE,
+  GREEN_DRAGON, HOLES, GEO,
 } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 
-const VARIANTS = { oak: 4, poplar: 2, willow: 3 };
+const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1 };
 
-function ellipseDist(x, z, e) {
-  const c = Math.cos(e.rot || 0), s = Math.sin(e.rot || 0);
-  const dx = x - e.x, dz = z - e.z;
-  const u = (dx * c - dz * s) / e.rx, v = (dx * s + dz * c) / e.rz;
-  return Math.hypot(u, v);
-}
-
-/** Places that must stay clear of trees: lanes, water, the set's open ground. */
+/** Places that must stay clear of trees: lanes, water, gardens, buildings, the Party Field. */
 function blocked(x, z, pad = 0) {
   if (Math.abs(x) < 279 && Math.abs(z) < 279) {
     for (const [ox, oz] of [[0, 0], [pad, 0], [-pad, 0], [0, pad], [0, -pad]]) {
       if (laneMask(x + ox, z + oz) > 0.01) return true;
       if (streamMask(x + ox, z + oz) > 0.05) return true;
+      if (yardAt(x + ox, z + oz) > 0) return true;
     }
   }
-  if (ellipseDist(x, z, LANDMARKS.lake) < 1.12) return true;
-  if (ellipseDist(x, z, LANDMARKS.partyField) < 1.25) return true;
-  // The south face of the Hill and the shoulder east of it are for hobbit holes (M3).
-  if (x > -120 && x < 70 && z > -95 && z < 5) return true;
-  if (Math.hypot(x - LANDMARKS.spawn.x, z - LANDMARKS.spawn.z) < 14) return true;
-  const gd = LANDMARKS.greenDragon;
-  if (Math.hypot(x - gd.x, z - gd.z) < 32) return true;
-  if (Math.hypot(x - MILL.x, z - MILL.z) < 20) return true;
-  if (Math.hypot(x - BRIDGE.x, z - BRIDGE.z) < 18) return true;
-  if (HOLES.some((h) => Math.hypot(x - h.x, z - h.z) < 12)) return true;
+  if (lakeFactor(x, z) > 0 || lakeDist(x, z) < 2 || pondDist(x, z) < 2) return true;
+  const pf = LANDMARKS.partyField;
+  if (Math.hypot((x - pf.x) / pf.rx, (z - pf.z) / pf.rz) < 1.1) return true;
+  if (HOLES.some((h) => Math.hypot(x - h.x, z - h.z) < 9)) return true;
+  if (Math.hypot(x - GREEN_DRAGON.x, z - GREEN_DRAGON.z) < 26) return true;
+  if (Math.hypot(x - MILL.x, z - MILL.z) < 12) return true;
+  if (Math.hypot(x - BRIDGE.x, z - BRIDGE.z) < 16) return true;
+  if (Math.hypot(x - LANDMARKS.spawn.x, z - LANDMARKS.spawn.z) < 10) return true;
   return false;
+}
+
+function inPoly(x, z, poly) {
+  let inside = false;
+  for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+    const [ax, az] = poly[m], [bx, bz] = poly[k];
+    if ((az > z) !== (bz > z) && x < ((bx - ax) * (z - az)) / (bz - az) + ax) inside = !inside;
+  }
+  return inside;
 }
 
 export function planTrees() {
@@ -48,59 +51,91 @@ export function planTrees() {
   const trees = [];
   const add = (species, x, z, scale, variant = Math.floor(rand() * VARIANTS[species])) =>
     trees.push({ species, variant, x, z, scale, rot: rand() * Math.PI * 2 });
+  const clear = (x, z, r) => !trees.some((t) => Math.hypot(t.x - x, t.z - z) < r);
 
-  // Landmarks.
+  // Landmarks: the Party Tree (a pine) and the oak above Bag End.
   const pt = LANDMARKS.partyTree, bo = LANDMARKS.bagEndOak;
-  add('oak', pt.x, pt.z, 1.75, 0);
-  add('oak', bo.x, bo.z, 1.35, 1);
+  add('pine', pt.x, pt.z, 1.25, 0);
+  add('oak', bo.x, bo.z, 1.3, 1);
 
-  // Willows leaning over the lake shore, leaving the bridge side open.
-  const L = LANDMARKS.lake;
-  for (let k = 0; k < 9; k++) {
-    const a = (k / 9) * Math.PI * 2 + rand() * 0.4;
-    const r = 1.1 + rand() * 0.08;
-    const lx = Math.cos(a) * r * L.rx, lz = Math.sin(a) * r * L.rz;
-    const c = Math.cos(-L.rot), s = Math.sin(-L.rot);
-    const x = L.x + lx * c - lz * s, z = L.z + lx * s + lz * c;
-    if (laneMask(x, z) > 0.01 || Math.hypot(x - pt.x, z - pt.z) < 16) continue;
-    if (Math.hypot(x - LANDMARKS.spawn.x, z - LANDMARKS.spawn.z) < 14) continue;
-    if (Math.hypot(x - LANDMARKS.bridge.x, z - LANDMARKS.bridge.z) < 18) continue;
-    add('willow', x, z, 1.05 + rand() * 0.3);
+  // Every other tree mapped individually.
+  for (const t of GEO.trees) {
+    if (t.kind !== 'tree' || t.name) continue;
+    const [x, z] = t.p;
+    if (!blocked(x, z, 1) && clear(x, z, 6)) add('oak', x, z, 0.85 + rand() * 0.3);
   }
 
-  // Willows along the stream, set back from the water.
-  const sp = STREAM.smooth;
-  for (let i = 3; i < sp.length - 3; i += 4) {
-    const [x0, z0] = sp[i], [x1, z1] = sp[i + 1];
-    const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz);
-    const side = rand() < 0.5 ? -1 : 1;
-    const x = x0 + (-dz / l) * side * (6 + rand() * 4), z = z0 + (dx / l) * side * (6 + rand() * 4);
-    if (!blocked(x, z, 2) && rand() < 0.6) add('willow', x, z, 0.75 + rand() * 0.25);
+  // Willows around the lake shore, a few meters back from the water.
+  const lake = GEO.water.find((w) => w.name === 'Bywater Pool').poly;
+  let acc = 0;
+  for (let k = 0; k < lake.length - 1; k++) {
+    const [ax, az] = lake[k], [bx, bz] = lake[k + 1];
+    const seg = Math.hypot(bx - ax, bz - az);
+    acc += seg;
+    if (acc < 17) continue;
+    acc = rand() * 6;
+    const nx = (bz - az) / seg, nz = -(bx - ax) / seg; // outward if the ring is clockwise
+    for (const s of [1, -1]) {
+      const x = ax + nx * s * (3.5 + rand() * 3), z = az + nz * s * (3.5 + rand() * 3);
+      if (lakeDist(x, z) < 1.5 || lakeDist(x, z) > 9) continue;
+      if (!blocked(x, z, 1.5) && clear(x, z, 9) && rand() < 0.75) add('willow', x, z, 0.9 + rand() * 0.35);
+      break;
+    }
   }
 
-  // Oak clumps on the knolls: clustered by a noise field, thinning toward the horizon.
+  // Willows along the streams.
+  for (const st of STREAMS)
+    for (let i = 1; i < st.pts.length - 1; i++) {
+      const [x0, z0] = st.pts[i], [x1, z1] = st.pts[i + 1];
+      const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz) || 1;
+      const side = rand() < 0.5 ? -1 : 1;
+      const x = x0 - (dz / l) * side * (5 + rand() * 3), z = z0 + (dx / l) * side * (5 + rand() * 3);
+      if (!blocked(x, z, 1.5) && clear(x, z, 10) && rand() < 0.6) add('willow', x, z, 0.8 + rand() * 0.25);
+    }
+
+  // The mapped woods, filled.
+  for (const poly of GEO.woods) {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const [x, z] of poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+    for (let z = minZ; z < maxZ; z += 11)
+      for (let x = minX; x < maxX; x += 11) {
+        const px = x + (rand() - 0.5) * 8, pz = z + (rand() - 0.5) * 8;
+        if (inPoly(px, pz, poly) && !blocked(px, pz, 2) && clear(px, pz, 7)) add('oak', px, pz, 0.8 + rand() * 0.45);
+      }
+  }
+
+  // The apple orchard beside its lane: small, rounded trees in loose rows.
+  const orchard = GEO.paths.find((p) => p.name === 'Apple Orchard' && p.kind === 'footway');
+  if (orchard) {
+    const [ox, oz] = orchard.pts[Math.floor(orchard.pts.length / 2)];
+    for (let k = 0; k < 16; k++) {
+      const x = ox + (rand() - 0.5) * 30, z = oz + (rand() - 0.5) * 24;
+      if (!blocked(x, z, 1.5) && clear(x, z, 5)) add('oak', x, z, 0.36 + rand() * 0.08, 3);
+    }
+  }
+
+  // Scattered oaks and clumps on the surrounding farmland, thinning toward the horizon; the village
+  // itself (within ~150 m of the lanes' center) stays open pasture as on the set.
   let tries = 0;
-  while (trees.length < 330 && tries++ < 20000) {
-    const r = 70 + Math.pow(rand(), 1.4) * 1100;
+  while (trees.length < 380 && tries++ < 30000) {
+    const r = 150 + Math.pow(rand(), 1.3) * 1100;
     const a = rand() * Math.PI * 2;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    const x = Math.cos(a) * r - 10, z = Math.sin(a) * r - 40;
     const clump = fbm2(x / 160 + 5, z / 160 - 3, 3);
-    if (clump < 0.12 + rand() * 0.25) continue;
-    if (blocked(x, z, 5)) continue;
-    if (trees.some((t) => Math.hypot(t.x - x, t.z - z) < 9)) continue;
+    if (clump < 0.15 + rand() * 0.25) continue;
+    if (blocked(x, z, 5) || !clear(x, z, 9)) continue;
     add('oak', x, z, 0.8 + rand() * 0.45);
   }
 
-  // Shelterbelts: straight lines of poplars along field boundaries.
-  for (let b = 0; b < 9; b++) {
-    const r = 200 + rand() * 600, a = rand() * Math.PI * 2;
+  // Farm shelterbelts of poplars, well away from the set.
+  for (let b = 0; b < 8; b++) {
+    const r = 400 + rand() * 500, a = rand() * Math.PI * 2;
     const x0 = Math.cos(a) * r, z0 = Math.sin(a) * r;
     const dir = a + Math.PI / 2 + (rand() - 0.5) * 0.8;
     const n = 10 + Math.floor(rand() * 18);
     for (let k = 0; k < n; k++) {
       const x = x0 + Math.cos(dir) * k * 5.5 + (rand() - 0.5), z = z0 + Math.sin(dir) * k * 5.5 + (rand() - 0.5);
-      if (blocked(x, z, 3)) continue;
-      add('poplar', x, z, 0.85 + rand() * 0.3);
+      if (!blocked(x, z, 3)) add('poplar', x, z, 0.85 + rand() * 0.3);
     }
   }
   return trees;
@@ -173,17 +208,25 @@ export class Vegetation {
   }
 
   _leafMaterial(species) {
+    return this.leafMaterial(SPECIES[species].leaves.texture, SPECIES[species].color);
+  }
+
+  /** Alpha-tested leaf-card material with sway, radial crown shading and backlight. */
+  leafMaterial(texKind, tintHex, useVertexColor = false) {
     const u = this.u, sunU = this.sky.u;
-    const tex = leafTexture(SPECIES[species].leaves.texture);
+    const tex = leafTexture(texKind);
     const m = new THREE.MeshLambertNodeMaterial({ side: THREE.DoubleSide, alphaTest: 0.5 });
     m.alphaToCoverage = true;
     const t = texture(tex, uv());
-    const tint = color(SPECIES[species].color);
+    const tint = color(tintHex);
     const vary = hash(instanceIndex.add(uint(3)));
     // Sharpen alpha by its screen-space rate of change so mipmapped cutouts keep their coverage
     // with distance instead of thinning out to bare twigs (used with alpha-to-coverage).
     const a = saturate(t.a.sub(0.45).div(max(fwidth(t.a), 1e-4)).add(0.5));
-    m.colorNode = vec4(t.rgb.mul(tint).mul(vary.mul(0.35).add(0.8)).mul(mix(vec3(1), vec3(1.1, 1.05, 0.8), vary.mul(0.6))), a);
+    // With vertex colors, white cards take the leaf tint and colored cards (blossoms) their own.
+    const vc = attribute('color', 'vec3');
+    const tintV = useVertexColor ? select(vc.r.add(vc.g).add(vc.b).greaterThan(2.99), tint, vc.mul(1.6)) : tint;
+    m.colorNode = vec4(t.rgb.mul(tintV).mul(vary.mul(0.35).add(0.8)).mul(mix(vec3(1), vec3(1.1, 1.05, 0.8), vary.mul(0.6))), a);
     // Radial crown normals, not flipped on back faces, so the crown shades as one mass.
     m.normalNode = normalViewGeometry;
     m.positionNode = this._sway((p) => {

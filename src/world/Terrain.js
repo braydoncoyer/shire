@@ -7,7 +7,8 @@ import {
   Fn, texture, positionWorld, normalWorld, cameraPosition, vec3, float, mix, smoothstep, abs, step, color, max,
 } from 'three/tsl';
 import { heightAt, INNER_HALF, WORLD_HALF, WATER_Y } from './Layout.js';
-import { makeGroundNoiseTexture, makeLaneTexture } from '../util/textures.js';
+import { LAYERS } from '../core/Layers.js';
+import { makeGroundNoiseTexture, makeLaneTexture, makeWaterTexture } from '../util/textures.js';
 
 const INNER_STEP = 1;
 
@@ -110,7 +111,7 @@ function buildOuterGeometry() {
   return g;
 }
 
-export function makeTerrainMaterial(groundNoise, laneTex) {
+export function makeTerrainMaterial(groundNoise, laneTex, waterTex) {
   // Lambert: no specular sheen at grazing angles (the grass layer provides the real surface).
   const mat = new THREE.MeshLambertNodeMaterial();
   const wp = positionWorld.xz;
@@ -157,7 +158,8 @@ export function makeTerrainMaterial(groundNoise, laneTex) {
     // Stream bed and the lake shore.
     const bed = smoothstep(0.35, 0.8, lt.g).mul(inInner);
     col.assign(mix(col, mud, bed));
-    const shore = float(1).sub(smoothstep(WATER_Y - 0.05, WATER_Y + 0.25, positionWorld.y));
+    const wd = texture(waterTex, wp.add(280).div(560)).r.sub(0.5).mul(60);
+    const shore = float(1).sub(smoothstep(-0.5, 1.2, wd)).mul(inInner).mul(float(1).sub(smoothstep(WATER_Y + 0.2, WATER_Y + 0.9, positionWorld.y)));
     col.assign(mix(col, mud, shore.mul(0.85)));
     return col;
   })();
@@ -174,19 +176,35 @@ export class Terrain {
   constructor() {
     this.groundNoise = makeGroundNoiseTexture();
     this.laneTex = makeLaneTexture();
-    this.material = makeTerrainMaterial(this.groundNoise, this.laneTex);
+    this.waterTex = makeWaterTexture();
+    this.material = makeTerrainMaterial(this.groundNoise, this.laneTex, this.waterTex);
     this.group = new THREE.Group();
     this.heights = bakeHeights();
     this.heightTex = new THREE.DataTexture(this.heights.H, this.heights.m, this.heights.m, THREE.RedFormat, THREE.FloatType);
     this.heightTex.magFilter = this.heightTex.minFilter = THREE.NearestFilter;
     this.heightTex.needsUpdate = true;
     this.inner = new THREE.Mesh(buildInnerGeometry(this.heights), this.material);
+    this.inner.layers.set(LAYERS.TERRAIN);
+    // A 2 m proxy casts the terrain's shadows, sunk a little so it never shadows the real surface.
+    const H = this.heights, step = 2;
+    const pn = Math.floor((H.n - 1) / step) + 1;
+    const pg = new THREE.PlaneGeometry(INNER_HALF * 2, INNER_HALF * 2, pn - 1, pn - 1);
+    pg.rotateX(-Math.PI / 2);
+    const pp = pg.attributes.position;
+    for (let k = 0; k < pp.count; k++) {
+      const i = Math.round((pp.getX(k) + INNER_HALF) / INNER_STEP), j = Math.round((pp.getZ(k) + INNER_HALF) / INNER_STEP);
+      pp.setY(k, H.H[(j + 1) * H.m + (i + 1)] - 0.35);
+    }
+    pg.computeBoundingSphere();
+    this.shadowProxy = new THREE.Mesh(pg, new THREE.MeshBasicNodeMaterial());
+    this.shadowProxy.layers.set(LAYERS.SHADOW_ONLY);
+    this.shadowProxy.castShadow = true;
     this.outer = new THREE.Mesh(buildOuterGeometry(), this.material);
     for (const m of [this.inner, this.outer]) {
       m.receiveShadow = true;
-      m.castShadow = true;
+      m.castShadow = false;
       this.group.add(m);
     }
-    this.outer.castShadow = false;
+    this.group.add(this.shadowProxy);
   }
 }
