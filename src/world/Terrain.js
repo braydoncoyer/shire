@@ -4,23 +4,28 @@
 
 import * as THREE from 'three/webgpu';
 import {
-  Fn, texture, positionWorld, normalWorld, vec3, float, mix, smoothstep, abs, step, color,
+  Fn, texture, positionWorld, normalWorld, cameraPosition, vec3, float, mix, smoothstep, abs, step, color,
 } from 'three/tsl';
 import { heightAt, INNER_HALF, WORLD_HALF, WATER_Y } from './Layout.js';
 import { makeGroundNoiseTexture, makeLaneTexture } from '../util/textures.js';
 
 const INNER_STEP = 1;
 
-function buildInnerGeometry() {
+// Heights on the inner grid with a 1-cell border (so normals can use central differences).
+// Also uploaded as a texture so the GPU (grass, flowers) can place things on the ground.
+export function bakeHeights() {
   const n = Math.round((INNER_HALF * 2) / INNER_STEP) + 1;
-  const count = n * n;
-  // Heights on a grid with a 1-cell border so normals can be taken by central differences.
   const m = n + 2;
   const H = new Float32Array(m * m);
   for (let j = 0; j < m; j++) {
     const z = (j - 1) * INNER_STEP - INNER_HALF;
     for (let i = 0; i < m; i++) H[j * m + i] = heightAt((i - 1) * INNER_STEP - INNER_HALF, z);
   }
+  return { n, m, H };
+}
+
+function buildInnerGeometry({ n, m, H }) {
+  const count = n * n;
   const skirt = 4 * (n - 1);
   const pos = new Float32Array((count + skirt + 4) * 3);
   const nor = new Float32Array((count + skirt + 4) * 3);
@@ -110,7 +115,7 @@ export function makeTerrainMaterial(groundNoise, laneTex) {
   const mat = new THREE.MeshLambertNodeMaterial();
   const wp = positionWorld.xz;
 
-  const lush = color(0x4d7a22), bright = color(0x74982f), deep = color(0x365a1a);
+  const lush = color(0x3f7a1a), bright = color(0x6c9e2a), deep = color(0x2a5212);
   const dry = color(0x8c9343), soil = color(0x5e4a33), gravel = color(0xa89a7e);
   const gravelDark = color(0x7d6c55), mud = color(0x4a4030);
 
@@ -125,6 +130,9 @@ export function makeTerrainMaterial(groundNoise, laneTex) {
     g.assign(mix(g, deep, smoothstep(0.55, 0.8, n2.b).mul(0.45)));
     g.assign(mix(g, dry, smoothstep(0.6, 0.85, n1.g.mul(0.5).add(n3.b.mul(0.5))).mul(0.35)));
     g.mulAssign(n4.a.mul(0.3).add(0.85).mul(n3.a.mul(0.2).add(0.9)));
+    // Near the viewer the ground is seen between blades, so it's the shaded root layer.
+    const dist = positionWorld.sub(cameraPosition).length();
+    g.mulAssign(mix(float(0.55), float(1), smoothstep(8, 60, dist)));
     const slope = float(1).sub(normalWorld.y);
     g.assign(mix(g, soil, smoothstep(0.35, 0.6, slope).mul(0.5)));
 
@@ -134,14 +142,15 @@ export function makeTerrainMaterial(groundNoise, laneTex) {
     const fray = n3.a.sub(0.5).mul(0.35).add(n4.b.sub(0.5).mul(0.25));
     const lane = smoothstep(0.42, 0.62, lt.r.add(fray)).mul(inInner);
     const edge = smoothstep(0.2, 0.45, lt.r.add(fray)).mul(inInner).sub(lane).max(0);
-    const grav = mix(gravelDark, gravel, n4.r.mul(0.7).add(n3.g.mul(0.3)));
+    const pebble = texture(groundNoise, wp.div(0.31)).a;
+    const grav = mix(gravelDark, gravel, n4.r.mul(0.5).add(n3.g.mul(0.2)).add(pebble.mul(0.5)).sub(0.1).saturate());
     const col = mix(g, soil.mul(1.1), edge.mul(0.55)).toVar();
     col.assign(mix(col, grav, lane));
 
     // Stream bed and the lake shore.
     const bed = smoothstep(0.35, 0.8, lt.g).mul(inInner);
     col.assign(mix(col, mud, bed));
-    const shore = float(1).sub(smoothstep(WATER_Y - 0.1, WATER_Y + 0.5, positionWorld.y));
+    const shore = float(1).sub(smoothstep(WATER_Y - 0.05, WATER_Y + 0.25, positionWorld.y));
     col.assign(mix(col, mud, shore.mul(0.85)));
     return col;
   })();
@@ -160,7 +169,11 @@ export class Terrain {
     this.laneTex = makeLaneTexture();
     this.material = makeTerrainMaterial(this.groundNoise, this.laneTex);
     this.group = new THREE.Group();
-    this.inner = new THREE.Mesh(buildInnerGeometry(), this.material);
+    this.heights = bakeHeights();
+    this.heightTex = new THREE.DataTexture(this.heights.H, this.heights.m, this.heights.m, THREE.RedFormat, THREE.FloatType);
+    this.heightTex.magFilter = this.heightTex.minFilter = THREE.NearestFilter;
+    this.heightTex.needsUpdate = true;
+    this.inner = new THREE.Mesh(buildInnerGeometry(this.heights), this.material);
     this.outer = new THREE.Mesh(buildOuterGeometry(), this.material);
     for (const m of [this.inner, this.outer]) {
       m.receiveShadow = true;

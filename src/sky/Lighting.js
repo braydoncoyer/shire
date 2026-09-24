@@ -90,6 +90,11 @@ export class Lighting {
     light.intensity = I;
     light.position.set(dir[0] * 200, dir[1] * 200, dir[2] * 200);
     light.target.position.set(0, 0, 0);
+    // Render the cascades once per frame; the water reflection pass reuses them.
+    for (const l of this.csm.lights) {
+      l.shadow.autoUpdate = false;
+      l.shadow.needsUpdate = true;
+    }
 
     // Auto exposure from the expected brightness of a mid-grey lit surface. Adaptation is only
     // partial (the 0.8 power), like an eye: noon still reads brighter than dusk, and night darker.

@@ -35,10 +35,17 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 |---|---|
 | `src/world/Layout.js` | The Hobbiton layout (landmarks, lanes, stream) and the height function |
 | `src/world/Terrain.js` | 1 m heightfield over the set plus a stretched outer ring to the horizon |
+| `src/world/Grass.js` | GPU-driven grass, reeds and wildflowers: compute placement + culling, indirect draws |
+| `src/world/TreeGen.js`, `Vegetation.js` | Procedural oaks, poplars and willows; instanced placement with wind |
+| `src/world/Water.js` | Lake with planar reflection, refraction and depth tint; the flowing stream |
 | `src/sky/Atmosphere.js` | Rayleigh/Mie/ozone atmosphere (Hillaire 2020), evaluated on CPU and GPU |
 | `src/sky/Sky.js` | Sky-view LUT, raymarched cumulus + cirrus with temporal accumulation, stars, aerial perspective |
 | `src/sky/Lighting.js` | Sun/moon light with cascaded shadows, sky ambient, auto exposure |
 | `src/post/Post.js` | Exposure, bloom, night grading, AgX tone mapping |
 | `src/player/Player.js` | First-person walker and free camera |
 
-`npm run shot -- <name> "<query>"` renders headless WebGPU screenshots into `shots/` (dev server must be running).
+Dev tools (dev server must be running):
+
+- `npm run shot -- <name> "<query>"` renders headless WebGPU screenshots into `shots/`.
+- `node scripts/bench.mjs "<query>" "label=<js>" ...` A/B frame times inside one page, uncapped.
+- `node scripts/profile.mjs "<query>"` CPU profile of the render loop.

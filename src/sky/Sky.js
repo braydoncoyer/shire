@@ -12,6 +12,7 @@ import {
   Fn, uniform, texture, texture3D, uv, screenUV, vec2, vec3, vec4, float, Loop, If, Break,
   sin, cos, acos, asin, sqrt, exp, abs, max, min, clamp, mix, dot, normalize, length, smoothstep,
   sign, pow, saturate, positionWorld, cameraPosition, output, hash, fract, floor, select, step, PI,
+  cameraProjectionMatrixInverse, cameraWorldMatrix,
 } from 'three/tsl';
 import {
   R_GROUND, R_TOP, CAMERA_ALT_KM, RAYLEIGH_SCATTER, RAYLEIGH_H, MIE_SCATTER, MIE_EXTINCT, MIE_H,
@@ -331,10 +332,15 @@ export class Sky {
   _backgroundNode() {
     const u = this.u;
     return Fn(() => {
-      const sky = texture(this.skyRT.texture, screenUV).toVar();
+      // Direction from whichever camera is rendering: the main view, or the mirrored camera of a
+      // water reflection. Only the main view has the half-res cloud sky prepared for it; mirrored
+      // views fall back to the clear-sky LUT.
       const ndc = vec2(screenUV.x.mul(2).sub(1), float(1).sub(screenUV.y.mul(2)));
-      const wp = u.invViewProj.mul(vec4(ndc, 0.5, 1));
-      const dir = normalize(wp.xyz.div(wp.w).sub(u.camPos)).toVar();
+      const vp = cameraProjectionMatrixInverse.mul(vec4(ndc, 0.5, 1));
+      const dir = normalize(cameraWorldMatrix.mul(vec4(vp.xyz.div(vp.w), 0)).xyz).toVar();
+      const isMain = length(cameraPosition.sub(u.camPos)).lessThan(0.05);
+      const clear = vec4(this.sampleSky(dir).add(vec3(0.0012, 0.002, 0.0045).mul(u.night)), 1);
+      const sky = select(isMain, texture(this.skyRT.texture, screenUV), clear).toVar();
       const night = u.night;
 
       // Stars: one candidate per cell of a 3D grid, jittered inside the cell, drawn as a tiny disc.

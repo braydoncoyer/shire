@@ -8,7 +8,7 @@ export const FIELD_Y = 3.2;
 export const WATER_Y = 1.55;
 export const INNER_HALF = 280; // detailed terrain + baked lane mask covers [-INNER_HALF, INNER_HALF]
 export const WORLD_HALF = 3200;
-export const WALK_RADIUS = 420;
+export const WALK_RADIUS = 265;
 
 export const LANDMARKS = {
   hill: { x: -40, z: -95 },
@@ -236,7 +236,9 @@ export function heightAt(x, z) {
   const sd = sampleGrid(streamDist, x, z, 99);
   if (sd < 58) {
     const bed = sampleGrid(streamBed, x, z, h);
-    const bank = bed + 0.45 + Math.max(0, sd - STREAM.width * 0.5) * 0.3 + Math.max(0, sd - STREAM.width * 0.5 - 6) ** 2 * 0.012;
+    // A real channel (the bed) inside the stream's width, then gentle banks rising away from it.
+    const hw = STREAM.width * 0.5;
+    const bank = bed + smoothstep(hw - 1.2, hw + 0.6, sd) * 0.75 + Math.max(0, sd - hw) * 0.3 + Math.max(0, sd - hw - 6) ** 2 * 0.012;
     const k = 1 - smoothstep(40, 58, sd);
     // Smooth minimum of the land and the valley profile.
     const m = 1.5, hv = Math.max(m - Math.abs(h - bank), 0) / m;

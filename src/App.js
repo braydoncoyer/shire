@@ -5,6 +5,9 @@ import { Sky } from './sky/Sky.js';
 import { Lighting } from './sky/Lighting.js';
 import { Terrain } from './world/Terrain.js';
 import { Water } from './world/Water.js';
+import { GroundMaps } from './world/GroundMaps.js';
+import { Grass } from './world/Grass.js';
+import { Vegetation } from './world/Vegetation.js';
 import { Player } from './player/Player.js';
 import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
@@ -39,15 +42,27 @@ export class App {
     this.terrain = new Terrain();
     scene.add(this.terrain.group);
     this.water = new Water(this.sky, this.terrain.groundNoise);
-    scene.add(this.water.mesh);
+    scene.add(this.water.group);
+
+    progress('Growing the grass');
+    await tick();
+    this.maps = new GroundMaps(this.terrain);
+    this.grass = new Grass(this.maps, this.sky);
+    scene.add(this.grass.group);
+    camera.layers.enable(1);
+
+    progress('Planting the trees');
+    await tick();
+    this.vegetation = new Vegetation(this.sky, this.terrain.groundNoise);
+    scene.add(this.vegetation.group);
 
     this.input = new Input(renderer.domElement);
     this.player = new Player(camera, this.input);
+    this.player.colliders.push(...this.vegetation.colliders);
     const s = this.settings;
     if (s.cam) this.player.setPose(s.cam[0], s.cam[1], s.cam[2], s.cam[3], s.cam[4]);
     if (s.fly) this.player.fly = true;
 
-    if (new URLSearchParams(location.search).has('noshadow')) this.lighting.light.castShadow = false;
     this.post = new Post(renderer, scene, camera, this.sky);
     this.hud = new Hud(this);
 
@@ -57,6 +72,7 @@ export class App {
     progress('Compiling shaders');
     this.player.update(0);
     this.lighting.update(0, camera);
+    this.grass.update(0, camera, this.settings, renderer);
     await renderer.compileAsync(scene, camera);
     this.clock = new THREE.Timer();
     renderer.setAnimationLoop(() => this.frame());
@@ -82,7 +98,9 @@ export class App {
     this.player.update(dt);
     this.camera.updateMatrixWorld();
     this.lighting.update(dt, this.camera);
-    this.water.time.value += dt;
+    this.grass.update(dt, this.camera, s, this.renderer);
+    this.vegetation.update(dt, s);
+    this.water.update(dt, s);
     this.post.exposure.value = this.lighting.finalExposure();
     this.post.bloomStrength.value = s.bloom;
 
