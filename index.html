@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Shire</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0f0c; color: #f3ecd8; }
+      body { font-family: Inter, system-ui, sans-serif; }
+      #app canvas { display: block; }
+      #loader {
+        position: fixed; inset: 0; display: grid; place-items: center; background: #0d0f0c;
+        transition: opacity 1.2s ease; z-index: 10;
+      }
+      #loader.done { opacity: 0; pointer-events: none; }
+      #loader h1 { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 56px; margin: 0; letter-spacing: 0.02em; }
+      #loader p { text-align: center; opacity: 0.6; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+      #prompt {
+        position: fixed; left: 50%; bottom: 12%; transform: translateX(-50%); pointer-events: none;
+        text-align: center; text-shadow: 0 1px 12px rgba(0,0,0,0.6);
+      }
+      #prompt .title { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-style: italic; }
+      #prompt .keys { font-size: 12px; letter-spacing: 0.08em; opacity: 0.8; margin-top: 8px; text-transform: uppercase; }
+      #fps { position: fixed; top: 10px; left: 12px; font: 12px/1 ui-monospace, monospace; opacity: 0.7; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="loader"><div><h1>The Shire</h1><p id="loader-status">Loading</p></div></div>
+    <div id="prompt">
+      <div class="title">Click to walk in the Shire</div>
+      <div class="keys">WASD move · Shift run · Space jump · F fly · [ ] time of day · Esc release</div>
+    </div>
+    <div id="fps" hidden></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
