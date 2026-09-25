@@ -115,7 +115,36 @@ export class App {
     this.player.update(0);
     this.lighting.update(0, camera);
     this.grass.update(0, camera, this.settings, renderer);
+    this.vegetation.update(0, this.settings, camera);
     await renderer.compileAsync(scene, camera);
+    // Warm up behind the loading screen, so nothing hitches the first time it comes into view: one
+    // frame with nothing culled and every tree detail level shown gives every mesh its buffers,
+    // bindings and pipelines in every pass, then a frame toward each heading settles the rest.
+    const culled = [];
+    scene.traverse((o) => {
+      if (o.isMesh && o.frustumCulled) {
+        o.frustumCulled = false;
+        culled.push(o);
+      }
+    });
+    this.vegetation.showAll(true);
+    this.sky.render(camera);
+    this.post.render();
+    await tick();
+    this.vegetation.showAll(false);
+    for (const o of culled) o.frustumCulled = true;
+    const yaw = this.player.yaw;
+    for (let k = 1; k <= 6; k++) {
+      this.player.yaw = yaw + (k * Math.PI) / 3;
+      this.player.update(0);
+      this.camera.updateMatrixWorld();
+      this.lighting.update(0, camera);
+      this.vegetation.update(0, this.settings, camera);
+      this.sky.render(camera);
+      this.post.render();
+      await tick();
+    }
+    this.player.update(0);
     this.clock = new THREE.Timer();
     renderer.setAnimationLoop(() => this.frame());
   }
@@ -147,7 +176,7 @@ export class App {
     this.camera.updateMatrixWorld();
     this.lighting.update(dt, this.camera);
     this.grass.update(dt, this.camera, s, this.renderer);
-    this.vegetation.update(dt, s);
+    this.vegetation.update(dt, s, this.camera);
     this.buildings.update(dt);
     this.water.update(dt, s);
     this.post.exposure.value = this.lighting.finalExposure();

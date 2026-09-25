@@ -4,7 +4,7 @@
 //   sun shadow maps   BASE, SHADOW_ONLY, DETAIL
 export const LAYERS = {
   BASE: 0,
-  NO_REFLECT: 1, // grass, flowers, water: main view only
+  NO_REFLECT: 1, // grass, flowers, water, the farthest trees: main view only
   SHADOW_ONLY: 2, // the low-resolution terrain that casts the hills' shadows
   DETAIL: 3, // shrubs, hedges, fences, vegetables: main view and shadows, not reflected
   TERRAIN: 4, // the full-resolution terrain: main view and reflection, but no shadow casting

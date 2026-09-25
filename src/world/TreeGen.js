@@ -265,7 +265,7 @@ function tubeGeometry(branches, radialFor) {
   return g;
 }
 
-function leafGeometry(tree) {
+function leafGeometry(tree, keep = 1, grow = 1) {
   const { tips, spec, rand } = tree;
   const L = spec.leaves;
   const cards = [];
@@ -288,10 +288,11 @@ function leafGeometry(tree) {
 
   const pos = [], nor = [], uv = [], idx = [];
   let v = 0;
-  for (const p of cards) {
+  for (let c = 0; c < cards.length; c++) {
+    const p = cards[c];
     // Weeping species: most cards hang as strands; some lie loosely over the top to round the dome.
     const hang = L.hang && rand() > 0.3;
-    const size = L.size * (hang ? 0.45 + rand() * 0.9 : L.hang ? 0.45 : 0.75 + rand() * 0.5);
+    const size = L.size * (hang ? 0.45 + rand() * 0.9 : L.hang ? 0.45 : 0.75 + rand() * 0.5) * grow;
     let right, up;
     if (hang) {
       // Willow strands hang straight down from the twig, turned randomly about the vertical.
@@ -304,6 +305,9 @@ function leafGeometry(tree) {
       right = perpendicular(facing).multiplyScalar(size);
       up = new THREE.Vector3().crossVectors(facing, right).normalize().multiplyScalar(size * (L.hang ? 1 : L.aspect));
     }
+    // Lower detail keeps every `keep`th card, grown to cover about the same area. The random draws
+    // above still happen for every card, so the kept ones match the full-detail crown.
+    if (c % keep) continue;
     const nrm = p.clone().sub(center).normalize().lerp(UP, 0.25).normalize();
     const corners = [[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
     for (const [a, b] of corners) {
@@ -323,17 +327,29 @@ function leafGeometry(tree) {
   return g;
 }
 
-/** Build a tree variant: { wood, leaves, height, radius }. */
+// Levels of detail: full; without the finest twigs and half the leaf cards (grown to cover the
+// same area); and trunk and main limbs with a quarter of the cards, for the far farmland.
+const LODS = [
+  { radial: [8, 6, 4, 3], maxLevel: 9, keep: 1, grow: 1 },
+  { radial: [6, 4, 3, 3], maxLevel: 2, keep: 2, grow: 1.4 },
+  { radial: [5, 3, 3, 3], maxLevel: 1, keep: 4, grow: 1.95 },
+];
+export const TREE_LODS = LODS.length;
+
+/** Build a tree variant: { lods: [{ wood, leaves }], height, radius, trunkRadius }. */
 export function buildTree(speciesName, seed) {
-  const tree = growTree(speciesName, seed);
-  const wood = tubeGeometry(tree.branches, (level) => [8, 6, 4, 3][level] ?? 3);
-  const leaves = leafGeometry(tree);
+  const lods = LODS.map((L) => {
+    // Regrown per level so each draws the same random sequence (and so the same tree).
+    const tree = growTree(speciesName, seed);
+    const wood = tubeGeometry(tree.branches.filter((b) => b.level <= L.maxLevel), (level) => L.radial[level] ?? 3);
+    return { wood, leaves: leafGeometry(tree, L.keep, L.grow) };
+  });
+  const { wood, leaves } = lods[0];
   wood.computeBoundingBox();
   leaves.computeBoundingBox();
   const box = leaves.boundingBox.clone().union(wood.boundingBox);
   return {
-    wood,
-    leaves,
+    lods,
     height: box.max.y,
     radius: Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2,
     trunkRadius: SPECIES[speciesName].trunk.radius,

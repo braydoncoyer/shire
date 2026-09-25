@@ -86,7 +86,7 @@ export class Shrubs {
         const all = this.items.filter((it, i) => it.kind === kind && i % 2 === variant);
         if (!all.length) continue;
         const geo = cloud(kind, 91 + variant * 17 + kind.length * 3);
-        for (const list of chunk(all, (it) => [it.x, it.z], 200).values()) {
+        for (const list of chunk(all, (it) => [it.x, it.z], 400).values()) {
           const mesh = new THREE.InstancedMesh(geo, mat, list.length);
           list.forEach((it, i) => {
             m.compose(p.set(it.x, it.y - 0.08, it.z), q.setFromAxisAngle(up, it.rot), s.setScalar(it.scale));

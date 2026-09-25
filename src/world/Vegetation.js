@@ -15,9 +15,12 @@ import {
   GREEN_DRAGON, HOLES, GEO, VILLAGE,
 } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
-import { chunk } from './Chunks.js';
+import { LAYERS } from '../core/Layers.js';
 
 const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1, partyPine: 1 };
+// Distances (m, per unit of tree scale) beyond which trees switch to the next level of detail.
+const LOD_DIST = [90, 300];
+const TREE_SEED = attribute('treeSeed', 'float');
 
 /** Places that must stay clear of trees: lanes, water, gardens, buildings, the Party Field. */
 function blocked(x, z, pad = 0) {
@@ -179,38 +182,106 @@ export class Vegetation {
     this.colliders = [];
     this.trees = planTrees();
 
+    // Each tree variant is drawn once per level of detail. Trees move between the levels' instance
+    // lists as the camera walks, so the detailed list only ever holds the trees nearby, and each
+    // list's bounds let the views cull it. (Spatial chunks would cull finer, but every instanced
+    // mesh costs Three.js a separate shader build per pass, which stalls the first time each one
+    // comes into view.) A stable per-tree seed attribute, not the instance index (which changes
+    // with the lists), drives each tree's tint and sway phase.
+    this.sets = [];
+    const seedOf = (i) => (i * 0.6180339887) % 1;
+    this.trees.forEach((t, i) => (t.seed = seedOf(i)));
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     for (const [species, count] of Object.entries(VARIANTS)) {
       for (let v = 0; v < count; v++) {
         const list = this.trees.filter((t) => t.species === species && t.variant === v);
         if (!list.length) continue;
         const model = buildTree(species, 1000 + v * 37 + species.length * 101);
         const woodMat = this._woodMaterial(), leafMat = this._leafMaterial(species);
-        const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-        for (const t of list)
+        for (const t of list) {
           if (Math.hypot(t.x, t.z) < WALK_RADIUS + 10) this.colliders.push({ x: t.x, z: t.z, r: model.trunkRadius * t.scale + 0.15 });
-        // One instanced pair per chunk, so each view culls the trees it can't see.
-        for (const part of chunk(list, (t) => [t.x, t.z], 160).values()) {
-          const wood = new THREE.InstancedMesh(model.wood, woodMat, part.length);
-          const leaves = new THREE.InstancedMesh(model.leaves, leafMat, part.length);
-          part.forEach((t, i) => {
-            p.set(t.x, heightAt(t.x, t.z), t.z);
-            q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot);
-            s.setScalar(t.scale);
-            m.compose(p, q, s);
-            wood.setMatrixAt(i, m);
-            leaves.setMatrixAt(i, m);
-          });
-          for (const mesh of [wood, leaves]) {
-            // Storage-buffer matrices upload once; small counts would otherwise go through a uniform
-            // buffer that Three.js re-uploads on every render pass.
-            mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16);
+          p.set(t.x, heightAt(t.x, t.z), t.z);
+          q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot);
+          s.setScalar(t.scale);
+          t.matrix = m.compose(p, q, s).toArray(new Float32Array(16));
+        }
+        const set = { trees: list, lod: new Int8Array(list.length).fill(-1), meshes: [] };
+        model.lods.forEach((lod, level) => {
+          const pair = [[lod.wood, woodMat], [lod.leaves, leafMat]].map(([src, mat]) => {
+            // The geometry's buffers are shared; only the per-tree seed is per mesh.
+            const g = new THREE.BufferGeometry();
+            for (const k of ['position', 'normal', 'uv']) g.setAttribute(k, src.getAttribute(k));
+            g.setIndex(src.index);
+            g.setAttribute('treeSeed', new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1));
+            g.boundingSphere = (src.boundingSphere || (src.computeBoundingSphere(), src.boundingSphere)).clone();
+            const mesh = new THREE.InstancedMesh(g, mat, list.length);
+            // Storage-buffer matrices upload only when they change; small counts would otherwise go
+            // through a uniform buffer that Three.js re-uploads on every render pass.
+            mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(new Float32Array(list.length * 16), 16);
+            list.forEach((t, i) => mesh.instanceMatrix.array.set(t.matrix, i * 16));
             mesh.castShadow = true;
             mesh.receiveShadow = true;
-            mesh.computeBoundingSphere();
+            mesh.count = 0;
+            mesh.visible = false;
+            // The farthest trees (a few pixels in the lake, and past the shadow cascades) stay out of
+            // the reflection and the shadow maps.
+            if (level === model.lods.length - 1) mesh.layers.set(LAYERS.NO_REFLECT);
             this.group.add(mesh);
-          }
-        }
+            return mesh;
+          });
+          set.meshes.push(pair);
+        });
+        this.sets.push(set);
       }
+    }
+  }
+
+  /** Show every tree at every detail level (for warming up the renderer), or go back to normal. */
+  showAll(on) {
+    for (const c of this.sets) {
+      for (const pair of c.meshes)
+        for (const mesh of pair) {
+          mesh.count = on ? c.trees.length : 0;
+          mesh.visible = on;
+          if (on) mesh.computeBoundingSphere();
+        }
+      c.lod.fill(-1); // rebuild the detail lists on the next update
+    }
+  }
+
+  /** Move trees between detail levels by distance, with some hysteresis. */
+  _updateLods(camera) {
+    const cx = camera.position.x, cz = camera.position.z;
+    for (const c of this.sets) {
+      let changed = false;
+      c.trees.forEach((t, i) => {
+        const d = Math.hypot(t.x - cx, t.z - cz) / Math.max(t.scale, 0.6);
+        const cur = c.lod[i];
+        let want = 0;
+        for (let k = 0; k < LOD_DIST.length; k++) if (d > LOD_DIST[k] * (cur > k ? 0.93 : cur < 0 ? 1 : 1.07)) want = k + 1;
+        if (want !== cur) {
+          c.lod[i] = want;
+          changed = true;
+        }
+      });
+      if (!changed) continue;
+      c.meshes.forEach((pair, k) => {
+        for (const mesh of pair) {
+          const mats = mesh.instanceMatrix.array, seeds = mesh.geometry.getAttribute('treeSeed');
+          let n = 0;
+          c.trees.forEach((t, i) => {
+            if (c.lod[i] !== k) return;
+            mats.set(t.matrix, n * 16);
+            seeds.array[n] = t.seed;
+            n++;
+          });
+          mesh.count = n;
+          mesh.visible = n > 0;
+          mesh.instanceMatrix.needsUpdate = true;
+          seeds.needsUpdate = true;
+          if (n) mesh.computeBoundingSphere();
+        }
+      });
     }
   }
 
@@ -219,11 +290,11 @@ export class Vegetation {
    * motion lives in the outer crown, where each part of it moves on its own phase (so the tree
    * never slides as one rigid piece), and nothing near the ground moves at all.
    */
-  _sway(extra) {
+  _sway(extra, seed) {
     const u = this.u;
     return Fn(() => {
       const p = positionLocal;
-      const ph = hash(instanceIndex.add(uint(7))).mul(6.283);
+      const ph = (seed ? hash(seed.mul(977).add(7)) : hash(instanceIndex.add(uint(7)))).mul(6.283);
       const h = max(p.y, 0);
       const r = length(p.xz);
       const t = u.time;
@@ -242,23 +313,26 @@ export class Vegetation {
     const m = new THREE.MeshLambertNodeMaterial();
     const n = texture(this.noiseTex, uv().mul(vec3(1, 3, 0).xy));
     m.colorNode = mix(color(0x2e2a25), color(0x5b5750), n.b.mul(0.7).add(n.a.mul(0.5)).sub(0.2).saturate());
-    m.positionNode = this._sway();
+    m.positionNode = this._sway(null, TREE_SEED);
     return m;
   }
 
   _leafMaterial(species) {
-    return this.leafMaterial(SPECIES[species].leaves.texture, SPECIES[species].color);
+    return this.leafMaterial(SPECIES[species].leaves.texture, SPECIES[species].color, false, TREE_SEED);
   }
 
-  /** Alpha-tested leaf-card material with sway, radial crown shading and backlight. */
-  leafMaterial(texKind, tintHex, useVertexColor = false) {
+  /**
+   * Alpha-tested leaf-card material with sway, radial crown shading and backlight. Each plant's
+   * random tint and sway phase come from `seed` (a per-instance float node), or its instance index.
+   */
+  leafMaterial(texKind, tintHex, useVertexColor = false, seed = null) {
     const u = this.u, sunU = this.sky.u;
     const tex = leafTexture(texKind);
     const m = new THREE.MeshLambertNodeMaterial({ side: THREE.DoubleSide, alphaTest: 0.5 });
     m.alphaToCoverage = true;
     const t = texture(tex, uv());
     const tint = color(tintHex);
-    const vary = hash(instanceIndex.add(uint(3)));
+    const vary = seed ? hash(seed.mul(977).add(3)) : hash(instanceIndex.add(uint(3)));
     // Sharpen alpha by its screen-space rate of change so mipmapped cutouts keep their coverage
     // with distance instead of thinning out to bare twigs (used with alpha-to-coverage).
     const a = saturate(t.a.sub(0.45).div(max(fwidth(t.a), 1e-4)).add(0.5));
@@ -271,7 +345,7 @@ export class Vegetation {
     m.positionNode = this._sway((p) => {
       const f = sin(u.time.mul(5.5).add(p.x.mul(3.1)).add(p.z.mul(2.3)).add(p.y)).mul(0.025).mul(u.windStrength.add(0.15));
       return vec3(f, f.mul(0.5), f.negate());
-    });
+    }, seed);
     // Sunlight glowing through the leaves when looking toward the sun.
     m.emissiveNode = Fn(() => {
       const v = normalize(positionWorld.sub(cameraPosition));
@@ -281,9 +355,10 @@ export class Vegetation {
     return m;
   }
 
-  update(dt, settings) {
+  update(dt, settings, camera) {
     const u = this.u;
     u.time.value += dt;
+    this._updateLods(camera);
     const wr = (settings.windDir * Math.PI) / 180;
     u.windDir.value.set(Math.sin(wr), 0, -Math.cos(wr));
     u.windStrength.value = Math.min(1.5, settings.windSpeed / 8);
