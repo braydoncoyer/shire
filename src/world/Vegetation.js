@@ -30,9 +30,9 @@ function blocked(x, z, pad = 0) {
   const pf = LANDMARKS.partyField;
   if (Math.hypot((x - pf.x) / pf.rx, (z - pf.z) / pf.rz) < 1.1) return true;
   if (HOLES.some((h) => Math.hypot(x - h.x, z - h.z) < 9)) return true;
-  if (Math.hypot(x - GREEN_DRAGON.x, z - GREEN_DRAGON.z) < 26) return true;
+  if (Math.hypot(x - GREEN_DRAGON.x, z - GREEN_DRAGON.z) < 38) return true;
   if (Math.hypot(x - MILL.x, z - MILL.z) < 12) return true;
-  if (Math.hypot(x - BRIDGE.x, z - BRIDGE.z) < 16) return true;
+  if (Math.hypot(x - BRIDGE.x, z - BRIDGE.z) < 30) return true;
   if (Math.hypot(x - LANDMARKS.spawn.x, z - LANDMARKS.spawn.z) < 10) return true;
   return false;
 }

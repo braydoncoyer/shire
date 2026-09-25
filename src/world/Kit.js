@@ -87,11 +87,12 @@ export function makeMaterials(sky, noiseTex) {
     const fine = texture(noiseTex, vec2(p.x.mul(40), p.y.mul(3))).b;
     const clump = texture(noiseTex, p.mul(vec2(0.6, 0.35))).g;
     // Old reed thatch weathers to grey-brown; fresher patches are warmer, moss darkens the hollows.
-    const base = mix(color(0x5e5446), color(0x9a8a6c), strands.mul(0.6).add(fine.mul(0.4)).saturate());
+    const base = mix(color(0x3e372c), color(0x7c6d52), strands.mul(0.6).add(fine.mul(0.4)).saturate());
     const warm = mix(base, color(0xa38a5c), smoothstep(0.6, 0.85, clump).mul(0.35));
     const moss = mix(warm, color(0x4a5230), smoothstep(0.1, 0.3, clump).mul(0.3));
-    const shade = smoothstep(0.0, 0.3, course).mul(0.3).add(0.7);
-    return moss.mul(shade).mul(vcol);
+    const shade = smoothstep(0.0, 0.3, course).mul(0.4).add(0.6);
+    const streak = texture(noiseTex, vec2(p.x.mul(22), p.y.mul(0.5))).a.mul(0.35).add(0.75);
+    return moss.mul(shade).mul(streak).mul(vcol);
   })();
 
   // Turf: the grassy hood that overhangs hobbit-hole facades. Hanging strands, darker underneath.
@@ -280,5 +281,116 @@ export function thatchRoof(w, d, h, { hip = 2.4, side = 3.2, seg = 28 } = {}) {
   g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
+  return g;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Footprint-driven building parts (world-space polygons, [x, z] pairs)
+
+function signedArea(poly) {
+  let a = 0;
+  for (let i = 0; i < poly.length - 1; i++) a += poly[i][0] * poly[i + 1][1] - poly[i + 1][0] * poly[i][1];
+  return a / 2;
+}
+
+/** Closed polygon without the repeated last point, wound so outward normals are (dz, -dx)·sign. */
+export function cleanPoly(poly) {
+  const p = poly.slice();
+  if (p.length > 1 && p[0][0] === p[p.length - 1][0] && p[0][1] === p[p.length - 1][1]) p.pop();
+  return p;
+}
+
+/** Signed distance to a polygon's edges: negative inside. */
+export function polyDist(poly, x, z) {
+  let best = Infinity, inside = false;
+  for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+    const [ax, az] = poly[m], [bx, bz] = poly[k];
+    if ((az > z) !== (bz > z) && x < ((bx - ax) * (z - az)) / (bz - az) + ax) inside = !inside;
+    const dx = bx - ax, dz = bz - az;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1e-6)));
+    const px = ax + dx * t - x, pz = az + dz * t - z;
+    best = Math.min(best, px * px + pz * pz);
+  }
+  return (inside ? -1 : 1) * Math.sqrt(best);
+}
+
+/**
+ * Edges of a polygon as wall frames: { m (Matrix4 at the edge start, x along the edge, z outward),
+ * len, mid:[x,z], n:[nx,nz] }.
+ */
+export function polyEdges(poly, y) {
+  const p = cleanPoly(poly);
+  const ccw = signedArea([...p, p[0]]) > 0; // in x/z with z down, positive area = clockwise on screen
+  const out = [];
+  for (let i = 0; i < p.length; i++) {
+    const [ax, az] = p[i], [bx, bz] = p[(i + 1) % p.length];
+    const len = Math.hypot(bx - ax, bz - az);
+    if (len < 0.3) continue;
+    const ex = (bx - ax) / len, ez = (bz - az) / len;
+    let nx = ez, nz = -ex;
+    if (polyDist(p, (ax + bx) / 2 + nx * 0.2, (az + bz) / 2 + nz * 0.2) < 0) { nx = -nx; nz = -nz; }
+    const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(ex, 0, ez), new THREE.Vector3(0, 1, 0), new THREE.Vector3(nx, 0, nz)).setPosition(ax, y, az);
+    out.push({ m, len, a: [ax, az], b: [bx, bz], mid: [(ax + bx) / 2, (az + bz) / 2], n: [nx, nz] });
+  }
+  void ccw;
+  return out;
+}
+
+/**
+ * A thatch roof over any footprint: height rises with distance in from the eave line, so hipped
+ * ridges form along the middle of every wing by themselves. `overhang` pushes the eaves out past
+ * the walls; the edge gets a thick rounded lip. World space; uv in meters.
+ */
+export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 11, res = 0.5, lip = 0.45 }) {
+  const p = cleanPoly(poly);
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const [x, z] of p) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
+  minX -= overhang + 1; minZ -= overhang + 1; maxX += overhang + 1; maxZ += overhang + 1;
+  const nx = Math.ceil((maxX - minX) / res) + 1, nz = Math.ceil((maxZ - minZ) / res) + 1;
+  const D = new Float32Array(nx * nz);
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) D[j * nx + i] = polyDist(p, minX + i * res, minZ + j * res) - overhang;
+  const height = (d) => {
+    const t = Math.min(-d / reach, 1);
+    return eaveY + rise * (1 - Math.pow(1 - t, 1.7));
+  };
+  const pos = [], uv = [], idx = [];
+  const vid = new Int32Array(nx * nz).fill(-1);
+  const vert = (i, j) => {
+    const k = j * nx + i;
+    if (vid[k] >= 0) return vid[k];
+    let x = minX + i * res, z = minZ + j * res, d = D[k];
+    if (d > 0) {
+      // Pull outside vertices back onto the eave line along the distance gradient.
+      const gx = (D[j * nx + Math.min(i + 1, nx - 1)] - D[j * nx + Math.max(i - 1, 0)]) / (2 * res);
+      const gz = (D[Math.min(j + 1, nz - 1) * nx + i] - D[Math.max(j - 1, 0) * nx + i]) / (2 * res);
+      const gl = Math.hypot(gx, gz) || 1;
+      x -= (gx / gl) * d; z -= (gz / gl) * d; d = 0;
+    }
+    vid[k] = pos.length / 3;
+    pos.push(x, height(Math.min(d, 0)), z);
+    uv.push(x * 0.7 + z * 0.3, -d);
+    return vid[k];
+  };
+  const edgeVerts = new Set();
+  for (let j = 0; j < nz - 1; j++)
+    for (let i = 0; i < nx - 1; i++) {
+      const ks = [j * nx + i, j * nx + i + 1, (j + 1) * nx + i, (j + 1) * nx + i + 1];
+      if (ks.every((k) => D[k] > 0)) continue;
+      const a = vert(i, j), b = vert(i + 1, j), c = vert(i, j + 1), e = vert(i + 1, j + 1);
+      idx.push(a, c, b, b, c, e);
+      ks.forEach((k, q) => { if (D[k] > -res * 1.5) edgeVerts.add([a, b, c, e][q]); });
+    }
+  // Thick lip: drop the outermost ring of vertices a little so the eave curls down.
+  for (const v of edgeVerts) {
+    const x = pos[v * 3], z = pos[v * 3 + 2];
+    const d = polyDist(p, x, z) - overhang;
+    if (d > -res * 1.2) pos[v * 3 + 1] -= lip * (1 - Math.min(1, -d / (res * 1.2)));
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  g.userData.heightAt = (x, z) => height(Math.min(polyDist(p, x, z) - overhang, 0));
   return g;
 }

@@ -11,6 +11,7 @@ import { Vegetation } from './world/Vegetation.js';
 import { makeMaterials } from './world/Kit.js';
 import { HobbitHoles } from './world/Holes.js';
 import { Buildings } from './world/Buildings.js';
+import { GreenDragon } from './world/GreenDragon.js';
 import { Shrubs } from './world/Shrubs.js';
 import { Boundaries } from './world/Boundaries.js';
 import { Player } from './player/Player.js';
@@ -75,10 +76,12 @@ export class App {
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
+    this.greenDragon = new GreenDragon(this.mats);
+    scene.add(this.greenDragon.group);
 
     this.input = new Input(renderer.domElement);
     this.player = new Player(camera, this.input);
-    this.player.colliders.push(...this.vegetation.colliders, ...this.holes.colliders, ...this.buildings.colliders);
+    this.player.colliders.push(...this.vegetation.colliders, ...this.holes.colliders, ...this.buildings.colliders, ...this.greenDragon.colliders);
     const s = this.settings;
     if (s.cam) this.player.setPose(s.cam[0], s.cam[1], s.cam[2], s.cam[3], s.cam[4]);
     if (s.fly) this.player.fly = true;

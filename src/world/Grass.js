@@ -18,7 +18,7 @@ import {
   max, dot, abs, step, floor, varying, cameraViewMatrix, cameraPosition, positionWorld, color, texture,
   uv, select,
 } from 'three/tsl';
-import { WATER_Y, LANDMARKS } from './Layout.js';
+import { WATER_Y, LANDMARKS, BRIDGE } from './Layout.js';
 import { LAYERS } from '../core/Layers.js';
 
 const PF = LANDMARKS.partyField;
@@ -263,7 +263,11 @@ export class Grass {
         }
         If(inside.greaterThan(0.5), () => {
           const { hgt: h0, col } = this._plant(L, xz, ground, h);
-          const hgt = h0.mul(keep).toVar();
+          // Nothing grows on the bridge deck.
+          const bd = xz.sub(vec2(BRIDGE.x, BRIDGE.z));
+          const bt = abs(bd.x.mul(BRIDGE.dx).add(bd.y.mul(BRIDGE.dz))), bw = abs(bd.x.mul(BRIDGE.dz).sub(bd.y.mul(BRIDGE.dx)));
+          const offBridge = float(1).sub(step(bt, BRIDGE.half + 1.5).mul(step(bw, BRIDGE.width / 2 + 0.3)));
+          const hgt = h0.mul(keep).mul(offBridge).toVar();
 
           If(hgt.greaterThan(0.015), () => {
             // Orientation: random, nudged to face the camera so blades never go edge-on.

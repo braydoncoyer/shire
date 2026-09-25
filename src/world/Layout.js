@@ -242,9 +242,11 @@ export const BRIDGE = (() => {
   const [[ax, az], [bx, bz]] = GEO.bridgeLine; // west (mill) end → east (Green Dragon) end
   const cx = (ax + bx) / 2, cz = (az + bz) / 2, len = Math.hypot(bx - ax, bz - az);
   const dx = (bx - ax) / len, dz = (bz - az) / len;
-  const half = len / 2, width = 3.4;
+  const half = len / 2, width = 3.2;
   const end0 = demHeight(ax, az), end1 = demHeight(bx, bz);
-  return { x: cx, z: cz, dx, dz, half, width, water: WATER_Y, end0, end1, crown: WATER_Y + 3.0, yaw: Math.atan2(-dz, dx) };
+  // A low, gently humped deck (the set's bridge is nearly level), clearing two small arches.
+  const crown = Math.max(end0, end1, WATER_Y + 1.6) + 0.55;
+  return { x: cx, z: cz, dx, dz, half, width, water: WATER_Y, end0, end1, crown, yaw: Math.atan2(-dz, dx) };
 })();
 
 /** Deck height of the bridge at `t` meters along it (−half..half). */
@@ -264,20 +266,39 @@ export const MILL = (() => {
   return { x: f.x, z: f.z, y, len: f.len, wid: f.wid, water: WATER_Y, yaw: Math.atan2(-px, -pz), wx: px, wz: pz };
 })();
 
+const polyDistSimple = (poly, x, z) => {
+  let best = Infinity, inside = false;
+  for (let k = 0, m = poly.length - 1; k < poly.length; m = k++) {
+    const [ax, az] = poly[m], [bx, bz] = poly[k];
+    if ((az > z) !== (bz > z) && x < ((bx - ax) * (z - az)) / (bz - az) + ax) inside = !inside;
+    const dx = bx - ax, dz = bz - az;
+    const t = clamp(((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz || 1e-6), 0, 1);
+    best = Math.min(best, (ax + dx * t - x) ** 2 + (az + dz * t - z) ** 2);
+  }
+  return (inside ? -1 : 1) * Math.sqrt(best);
+};
+
 export const GREEN_DRAGON = (() => {
   const g = building('The Green Dragon Inn');
+  const shed = GEO.buildings.find((b) => b.kind === 'shed').poly;
   const f = footprint(g.poly);
   // The front faces the bridge.
   const tx = BRIDGE.x + BRIDGE.dx * BRIDGE.half - f.x, tz = BRIDGE.z + BRIDGE.dz * BRIDGE.half - f.z;
   let fx = -f.uz, fz = f.ux;
   if (fx * tx + fz * tz < 0) { fx = -fx; fz = -fz; }
-  return { x: f.x, z: f.z, y: avgDEM(f.x, f.z, 16) + 0.15, fx, fz, yaw: Math.atan2(fx, fz), w: Math.max(f.len, 26), d: f.wid, poly: g.poly };
+  // Floor level: the ground at the main entrance side, so the building steps nowhere.
+  const [sx, sz] = centroid(shed);
+  return {
+    x: f.x, z: f.z, y: avgDEM(f.x, f.z, 12) + 0.15, fx, fz, yaw: Math.atan2(fx, fz), w: f.len, d: f.wid, poly: g.poly,
+    shed, shedY: demHeight(sx, sz) + 0.15,
+  };
 })();
 
 // Level pads for buildings, applied last in heightAt.
 const PADS = [
   { x: MILL.x, z: MILL.z, r0: 9, r1: 13, y: MILL.y },
-  { x: GREEN_DRAGON.x, z: GREEN_DRAGON.z, r0: 17, r1: 26, y: GREEN_DRAGON.y },
+  { poly: GREEN_DRAGON.poly, r0: 2.5, r1: 9, y: GREEN_DRAGON.y },
+  { poly: GREEN_DRAGON.shed, r0: 1.5, r1: 5, y: GREEN_DRAGON.shedY },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -322,7 +343,7 @@ function baseHeight(x, z) {
     h = lerp(h, Math.min(h, bank) - hv * hv * m * 0.25, k);
   }
   for (const p of PADS) {
-    const d = Math.hypot(x - p.x, z - p.z);
+    const d = p.poly ? Math.max(0, polyDistSimple(p.poly, x, z)) : Math.hypot(x - p.x, z - p.z);
     if (d < p.r1) h = lerp(h, p.y, 1 - smoothstep(p.r0, p.r1, d));
   }
   return h;

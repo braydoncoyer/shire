@@ -48,7 +48,6 @@ export class Buildings {
     const B = new Builder();
     this._bridge(B);
     this._mill(B);
-    this._greenDragon(B);
     this.group.add(B.build(mats));
   }
 
@@ -58,16 +57,15 @@ export class Buildings {
     const Br = BRIDGE;
     const base = new THREE.Matrix4().makeRotationY(Br.yaw).setPosition(Br.x, 0, Br.z);
     const at = (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(x, y, z, rx, ry, rz));
-
-    // Side profile: humped deck over two round arches with a pier between them.
+    // Side profile: a gently humped deck over two low round arches with a pier between.
     const bottom = Br.water - 1.4;
-    const spring = Br.water - 0.2, r = 2.45, cxs = [-2.95, 2.95];
+    const r = 1.75, spring = Br.water - 0.35, cxs = [-2.3, 2.3];
+    const N = 40, W = Br.width;
     const shape = new THREE.Shape();
-    const N = 40;
     shape.moveTo(-Br.half, bottom);
     for (let i = 0; i <= N; i++) {
       const t = -Br.half + (2 * Br.half * i) / N;
-      shape.lineTo(t, bridgeDeck(t) - 0.02);
+      shape.lineTo(t, bridgeDeck(t) - 0.12);
     }
     shape.lineTo(Br.half, bottom);
     shape.closePath();
@@ -80,41 +78,46 @@ export class Buildings {
       hole.closePath();
       shape.holes.push(hole);
     }
-    const body = new THREE.ExtrudeGeometry(shape, { depth: Br.width, bevelEnabled: false, curveSegments: 24 });
-    // uv in meters for the stone pattern: side faces use (x, y); ExtrudeGeometry already does.
-    B.add('stone', body, at(0, 0, -Br.width / 2), STONE);
-
-    // Arch rings (voussoirs) on both faces.
+    B.add('stone', new THREE.ExtrudeGeometry(shape, { depth: W, bevelEnabled: false, curveSegments: 24 }), at(0, 0, -W / 2), STONE);
     for (const cx of cxs)
-      for (const s of [-1, 1]) {
-        const ring = new THREE.TorusGeometry(r + 0.18, 0.2, 6, 24, Math.PI);
-        B.add('stone', ring, at(cx, spring, s * (Br.width / 2 + 0.02)), STONE_DARK);
-      }
+      for (const s of [-1, 1]) B.add('stone', new THREE.TorusGeometry(r + 0.16, 0.18, 6, 24, Math.PI), at(cx, spring, s * (W / 2 + 0.02)), STONE_DARK);
 
-    // Parapets following the deck.
+    // Gravel deck: the lane runs straight over.
+    for (let i = 0; i < N; i++) {
+      const t0 = -Br.half + (2 * Br.half * i) / N, t1 = t0 + (2 * Br.half) / N;
+      const y0 = bridgeDeck(t0), y1 = bridgeDeck(t1);
+      B.add('plaster', box(t1 - t0 + 0.02, 0.12, W - 0.9), at((t0 + t1) / 2, (y0 + y1) / 2 - 0.05, 0, 0, 0, Math.atan2(y1 - y0, t1 - t0)), 0xb09c7c);
+    }
+
+    // Thick, low parapets with big flat capstones; at each end they splay outward.
+    const pw = 0.5, ph = 0.6;
     for (const s of [-1, 1]) {
-      const p = new THREE.Shape();
-      p.moveTo(-Br.half, bridgeDeck(-Br.half) - 0.1);
+      const inner = W / 2 - pw / 2;
+      const pts = [];
       for (let i = 0; i <= N; i++) {
         const t = -Br.half + (2 * Br.half * i) / N;
-        p.lineTo(t, bridgeDeck(t) + 0.75);
+        pts.push([t, inner]);
       }
-      for (let i = N; i >= 0; i--) {
-        const t = -Br.half + (2 * Br.half * i) / N;
-        p.lineTo(t, bridgeDeck(t) - 0.1);
+      // Splayed wing walls beyond the ends.
+      const wing = (sign) => {
+        for (let k = 1; k <= 4; k++) pts[sign > 0 ? 'push' : 'unshift']([sign * (Br.half + k * 0.8), inner + k * 0.45]);
+      };
+      wing(1); wing(-1);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [t0, w0] = pts[i], [t1, w1] = pts[i + 1];
+        const len = Math.hypot(t1 - t0, w1 - w0), ang = Math.atan2(w1 - w0, t1 - t0);
+        const deck = (t) => (Math.abs(t) <= Br.half ? bridgeDeck(t) : lerpEnd(t));
+        const lerpEnd = (t) => (t > 0 ? Br.end1 : Br.end0) + 0.1;
+        const ya = deck(t0), yb = deck(t1), ym = (ya + yb) / 2;
+        const tilt = Math.atan2(yb - ya, len);
+        const mid = at((t0 + t1) / 2, 0, s * (w0 + w1) / 2, 0, -s * ang, 0);
+        B.add('stone', box(len + 0.04, ph + 0.6, pw), mid.clone().multiply(mtx(0, ym + ph / 2 - 0.3, 0, 0, 0, tilt)), STONE);
+        B.add('stone', box(len + 0.06, 0.14, pw + 0.12), mid.clone().multiply(mtx(0, ym + ph + 0.07, 0, 0, 0, tilt)), 0xc2bcae);
       }
-      const g = new THREE.ExtrudeGeometry(p, { depth: 0.32, bevelEnabled: false });
-      B.add('stone', g, at(0, 0, s * (Br.width / 2) - (s > 0 ? 0.32 : 0)), STONE_DARK);
-      // Coping stones on top.
-      for (let t = -Br.half + 0.4; t < Br.half; t += 0.8)
-        B.add('stone', box(0.78, 0.12, 0.4), at(t, bridgeDeck(t) + 0.8, s * (Br.width / 2 - 0.16), 0, 0, Math.atan((bridgeDeck(t + 0.1) - bridgeDeck(t - 0.1)) / 0.2)), 0xa19782);
-      // Parapets block walking off the sides.
-      const [cxw, czw] = [Br.x + Br.dz * s * (Br.width / 2 - 0.16), Br.z - Br.dx * s * (Br.width / 2 - 0.16)];
-      this.colliders.push({ x: cxw, z: czw, hx: Br.half, hz: 0.18, rot: Br.yaw });
+      const [cxw, czw] = [Br.x + Br.dz * s * inner, Br.z - Br.dx * s * inner];
+      this.colliders.push({ x: cxw, z: czw, hx: Br.half, hz: pw / 2, rot: Br.yaw });
     }
   }
-
-  // ---------------------------------------------------------------------------------------------
 
   _mill(B) {
     const M = MILL;
@@ -188,167 +191,6 @@ export class Buildings {
   }
 
   // ---------------------------------------------------------------------------------------------
-
-  _greenDragon(B) {
-    const G = GREEN_DRAGON;
-    const base = new THREE.Matrix4().makeRotationY(G.yaw).setPosition(G.x, G.y, G.z);
-    const at = (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(x, y, z, rx, ry, rz));
-    const toWorld = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyMatrix4(base);
-    // Local frame: +z is the front (facing the bridge and the lake), x along the facade.
-    // Single storey, cream plaster between dark oak timbers, round-headed doors and windows, and
-    // heavy rounded thatch over several wings (as on the set).
-    const H = 2.7, T = 0.35;
-    const CREAM = 0xd6b25e; // ochre lime plaster, as on the set
-    const THATCH = 0xffffff; // the thatch material carries its own weathered grey-brown
-    // Wings: [center x, center z, width, depth, wall height, roof rise]
-    const wings = [
-      { x: 0, z: 0, w: 19, d: 9, h: H, rise: 4.0 }, // main hall
-      { x: -12.4, z: -1.2, w: 6.4, d: 8.4, h: H - 0.1, rise: 3.6 }, // west wing (kitchen, big chimney)
-      { x: 12.2, z: 1.2, w: 6, d: 6.6, h: H - 0.2, rise: 3.2 }, // east snug
-      { x: 4, z: -8.5, w: 9, d: 6.5, h: H - 0.2, rise: 3.3 }, // back wing
-    ];
-    const doorW = 1.7;
-    for (const [wi, wg] of wings.entries()) {
-      const wat = (x, y, z, rx, ry, rz) => at(wg.x + x, y, wg.z + z, rx, ry, rz);
-      B.add('stone', box(wg.w + 0.4, 0.45, wg.d + 0.4), wat(0, -0.1, 0), STONE_DARK);
-      // Openings on the front: arched windows, and the main door in the hall.
-      const front = [];
-      const nWin = Math.max(1, Math.round(wg.w / 3.3));
-      for (let k = 0; k < nWin; k++) {
-        const x = -wg.w / 2 + ((k + 0.5) * wg.w) / nWin;
-        if (wi === 0 && Math.abs(x) < 2) continue;
-        front.push({ x0: x - 0.55, x1: x + 0.55, y0: 0.85, y1: 2.0, arch: true });
-      }
-      if (wi === 0) front.push({ x0: -doorW / 2, x1: doorW / 2, y0: 0.15, y1: 2.1, arch: true, door: true });
-      if (wi === 2) front.push({ x0: -0.5, x1: 0.5, y0: 0.15, y1: 1.95, arch: true, door: true });
-      const sides = [
-        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, 0, 0).multiply(mtx(0, 0, wg.d / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.w, open: front },
-        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, Math.PI, 0).multiply(mtx(0, 0, wg.d / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.w, open: [{ x0: -0.55, x1: 0.55, y0: 0.85, y1: 2.0, arch: true }] },
-        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, Math.PI / 2, 0).multiply(mtx(0, 0, wg.w / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.d, open: wi === 1 ? [] : [{ x0: -0.55, x1: 0.55, y0: 0.85, y1: 2.0, arch: true }] },
-        { at: (x, y, z, rx, ry, rz) => wat(0, 0, 0, 0, -Math.PI / 2, 0).multiply(mtx(0, 0, wg.w / 2 - T / 2)).multiply(mtx(x, y, z, rx, ry, rz)), len: wg.d, open: wi === 2 ? [] : [{ x0: -0.55, x1: 0.55, y0: 0.85, y1: 2.0, arch: true }] },
-      ];
-      for (const sd of sides) {
-        // Skip wall faces buried inside a neighboring wing.
-        wall(B, 'plaster', sd.at, -sd.len / 2, sd.len / 2, 0, 0, wg.h, T, sd.open, CREAM);
-        // Timber: sill beam, wall plate, posts, and curved braces.
-        B.add('wood', box(sd.len + 0.1, 0.2, 0.1), sd.at(0, 0.1, T / 2 + 0.03), TIMBER);
-        B.add('wood', box(sd.len + 0.1, 0.22, 0.1), sd.at(0, wg.h - 0.11, T / 2 + 0.03), TIMBER);
-        const posts = Math.max(2, Math.round(sd.len / 2.2));
-        for (let k = 0; k <= posts; k++) {
-          const x = -sd.len / 2 + (k * sd.len) / posts;
-          if (sd.open.some((o) => x > o.x0 - 0.12 && x < o.x1 + 0.12)) continue;
-          B.add('wood', box(0.16, wg.h, 0.1), sd.at(x, wg.h / 2, T / 2 + 0.03), TIMBER);
-          for (const s of [-1, 1]) {
-            if (sd.open.some((o) => x + s * 0.6 > o.x0 - 0.1 && x + s * 0.6 < o.x1 + 0.1)) continue;
-            B.add('wood', new THREE.TorusGeometry(0.55, 0.05, 5, 8, Math.PI / 2), sd.at(x + s * 0.55, wg.h - 0.75, T / 2 + 0.05, 0, 0, s > 0 ? Math.PI / 2 : 0), TIMBER);
-          }
-          // Diagonal braces across the plain panel to the right of this post.
-          const nx = x + sd.len / posts;
-          if (k < posts && !sd.open.some((o) => o.x1 > x - 0.1 && o.x0 < nx + 0.1)) {
-            const pw = nx - x, ph = wg.h - 0.45, ang = Math.atan2(ph, pw), len = Math.hypot(pw, ph);
-            for (const s of [-1, 1]) B.add('wood', box(len, 0.12, 0.08), sd.at(x + pw / 2, 0.22 + ph / 2, T / 2 + 0.06, 0, 0, s * ang), TIMBER);
-          }
-        }
-        // Round-headed openings: timber arch, glazing (lit), or a glowing doorway.
-        for (const o of sd.open) {
-          const cx = (o.x0 + o.x1) / 2, r = (o.x1 - o.x0) / 2, top = o.y1;
-          B.add('wood', new THREE.TorusGeometry(r + 0.06, 0.08, 6, 16, Math.PI), sd.at(cx, top, T / 2 + 0.04), TIMBER);
-          B.add('plaster', box(o.x1 - o.x0, r, T), sd.at(cx, top + r / 2, 0), CREAM); // filled above the arch spring
-          if (o.door) {
-            B.add('glass', box(o.x1 - o.x0 - 0.05, o.y1 - o.y0 + r * 0.6, 0.05), sd.at(cx, (o.y0 + o.y1 + r * 0.6) / 2, -T / 2 + 0.05), 0xff0000);
-            B.add('paint', box((o.x1 - o.x0) / 2, o.y1 - o.y0, 0.07), sd.at(o.x0, (o.y0 + o.y1) / 2, T / 2 + 0.3, 0, 1.3, 0).multiply(mtx((o.x1 - o.x0) / 4, 0, 0)), 0x2f5a34);
-          } else {
-            const disc = new THREE.CircleGeometry(r, 16, 0, Math.PI);
-            B.add('glass', box(o.x1 - o.x0, o.y1 - o.y0, 0.04), sd.at(cx, (o.y0 + o.y1) / 2, 0), 0xff0000);
-            B.add('glass', disc, sd.at(cx, top, 0.03), 0xff0000);
-            B.add('wood', box(0.06, o.y1 - o.y0 + r, 0.06), sd.at(cx, (o.y0 + o.y1 + r) / 2, 0.05), TIMBER);
-            for (const y of [o.y0 + (o.y1 - o.y0) * 0.5, o.y1]) B.add('wood', box(o.x1 - o.x0, 0.05, 0.06), sd.at(cx, y, 0.05), TIMBER);
-            B.add('wood', box(o.x1 - o.x0 + 0.2, 0.08, 0.28), sd.at(cx, o.y0 - 0.04, T / 2 + 0.08), TIMBER);
-          }
-        }
-      }
-      // Thatch.
-      B.add('thatch', thatchRoof(wg.w + 1.5, wg.d + 1.7, wg.rise, { hip: 5, side: 1.35 }), wat(0, wg.h - 0.3, 0), THATCH);
-    }
-    // Eyebrow dormer over the main door: a small thatch hood with a round window.
-    B.add('thatch', thatchRoof(3.6, 3.0, 1.6, { hip: 2.4, side: 1.5 }), at(0, H + 1.3, 4.6, 0.1, 0, 0), THATCH);
-    B.add('plaster', box(2.8, 1.3, 0.3), at(0, H + 0.6, 4.3), CREAM);
-    B.add('glass', new THREE.CircleGeometry(0.42, 20), at(0, H + 0.8, 4.47), 0xff0000);
-    B.add('wood', new THREE.TorusGeometry(0.45, 0.06, 6, 20), at(0, H + 0.8, 4.47), TIMBER);
-
-    // Round turret at the west corner, with a conical thatch cap.
-    {
-      const tx = -16.2, tz = 2.2, r = 2.1;
-      B.add('plaster', cylinder(r, r, H + 0.2, 20), at(tx, (H + 0.2) / 2, tz), CREAM);
-      for (let k = 0; k < 8; k++) {
-        const a = (k / 8) * Math.PI * 2;
-        B.add('wood', box(0.14, H + 0.2, 0.08), at(tx + Math.cos(a) * (r + 0.02), (H + 0.2) / 2, tz + Math.sin(a) * (r + 0.02), 0, -a + Math.PI / 2, 0), TIMBER);
-      }
-      B.add('glass', new THREE.CircleGeometry(0.38, 18), at(tx + 0.3, 1.5, tz + r + 0.03, 0, 0.15, 0), 0xff0000);
-      B.add('wood', new THREE.TorusGeometry(0.42, 0.06, 6, 18), at(tx + 0.3, 1.5, tz + r + 0.04, 0, 0.15, 0), TIMBER);
-      B.add('thatch', thatchRoof(r * 2 + 1.3, r * 2 + 1.3, 3.2, { hip: 2, side: 1.3 }), at(tx, H, tz), THATCH);
-      const p = toWorld(tx, tz);
-      this.colliders.push({ x: p.x, z: p.z, r: r + 0.1 });
-    }
-
-    // Chimneys: a big fieldstone stack on the west end, brick stacks through the thatch.
-    B.add('stone', box(1.5, 7.6, 1.3), at(-15.9, 3.6, -1.6), STONE);
-    B.add('stone', box(1.1, 0.25, 1.1), at(-15.9, 7.5, -1.6), STONE_DARK);
-    this.chimneys.push(toWorld(-15.9, -1.6).setY(G.y + 7.8));
-    for (const [x, z, h] of [[-4.4, -1.8, 7.4], [5.6, -1.4, 7.2], [12.4, 1.0, 6.0], [4, -9, 6.4]]) {
-      B.add('brick', box(0.75, h - 1.5, 0.75), at(x, 1.5 + (h - 1.5) / 2, z), 0x9a5236);
-      B.add('brick', cylinder(0.13, 0.15, 0.4, 10), at(x, h + 0.2, z), 0xa8603e);
-      this.chimneys.push(toWorld(x, z).setY(G.y + h + 0.45));
-    }
-
-    // Hanging sign on a bracket, lamps by the door, a lamp post on the forecourt.
-    B.add('metal', box(0.06, 0.06, 1.2), at(-doorW / 2 - 1.4, 2.6, 4.6), 0x2a2a2a);
-    B.add('paint', box(0.06, 0.9, 0.75), at(-doorW / 2 - 1.4, 2.05, 5.0), 0x2f5a34);
-    B.add('paint', box(0.07, 0.5, 0.42), at(-doorW / 2 - 1.4, 2.05, 5.0), 0xc8a232);
-    for (const s of [-1, 1]) {
-      B.add('metal', box(0.2, 0.3, 0.2), at(s * (doorW / 2 + 0.35), 2.15, 4.25), 0x2a2a2a);
-      B.add('glass', box(0.14, 0.22, 0.14), at(s * (doorW / 2 + 0.35), 2.15, 4.25), 0xff0000);
-      this.lamps.push(toWorld(s * (doorW / 2 + 0.35), 4.45).setY(G.y + 2.15));
-    }
-    B.add('metal', box(0.09, 2.6, 0.09), at(1.5, 1.3, 9.5), 0x2a2622);
-    B.add('metal', box(0.26, 0.36, 0.26), at(1.5, 2.75, 9.5), 0x2a2622);
-    B.add('glass', box(0.18, 0.26, 0.18), at(1.5, 2.75, 9.5), 0xff0000);
-    this.lamps.push(toWorld(1.5, 9.5).setY(G.y + 2.75));
-
-    // Cobbled forecourt path to the lane, tables, barrels.
-    for (let z = 4.5; z < 11; z += 0.5)
-      for (let x = -1.4; x <= 1.4; x += 0.45)
-        B.add('stone', box(0.4, 0.07, 0.42), at(x + (Math.round(z * 2) % 2) * 0.22, 0.02, z), [0x8f897d, 0xa29b8c, 0x7f7a70][Math.floor(Math.abs(Math.sin(x * 12.9 + z * 78.2)) * 3)]);
-    const tables = [[-5.5, 6.8], [5.2, 7.0], [-6.5, 9.8]];
-    for (const [x, z] of tables) {
-      B.add('wood', box(2.0, 0.08, 0.85), at(x, 0.75, z), 0x7a5a3e);
-      for (const s of [-1, 1]) {
-        B.add('wood', box(0.1, 0.72, 0.7), at(x + s * 0.8, 0.37, z), 0x5a4130);
-        B.add('wood', box(2.0, 0.07, 0.3), at(x, 0.45, z + s * 0.65), 0x7a5a3e);
-      }
-      const p = toWorld(x, z);
-      this.colliders.push({ x: p.x, z: p.z, hx: 1.1, hz: 0.8, rot: G.yaw });
-    }
-    for (const [x, z] of [[7.9, 4.6], [8.7, 4.9], [-12.4, 3.2]]) {
-      B.add('wood', cylinder(0.36, 0.4, 0.95, 14), at(x, 0.47, z), 0x6e4e32);
-      for (const y of [0.18, 0.76]) B.add('metal', cylinder(0.405, 0.405, 0.05, 14, true), at(x, y, z), 0x3a3632);
-    }
-
-    // Walls as colliders, leaving the doors open.
-    for (const [wi, wg] of wings.entries()) {
-      const box2 = (lx, lz, hx, hz) => { const p = toWorld(wg.x + lx, wg.z + lz); this.colliders.push({ x: p.x, z: p.z, hx, hz, rot: G.yaw }); };
-      const gap = wi === 0 ? doorW / 2 : wi === 2 ? 0.5 : 0;
-      if (gap) {
-        const fw = (wg.w / 2 - gap) / 2;
-        box2(-gap - fw, wg.d / 2 - T / 2, fw, T / 2);
-        box2(gap + fw, wg.d / 2 - T / 2, fw, T / 2);
-      } else box2(0, wg.d / 2 - T / 2, wg.w / 2, T / 2);
-      box2(0, -wg.d / 2 + T / 2, wg.w / 2, T / 2);
-      box2(-wg.w / 2 + T / 2, 0, T / 2, wg.d / 2);
-      box2(wg.w / 2 - T / 2, 0, T / 2, wg.d / 2);
-    }
-    this.gdFloorY = G.y + 0.25;
-  }
 
   /** A multi-paned window set into a wall opening (w × h), centered at (x, y) on the wall line z. */
   _window(B, at, x, y, z, w, h, lit) {
