@@ -125,7 +125,7 @@ function sculpt(x, z, h) {
   // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
   // Centered a few meters behind the oak (away from Bag End), so the house sits on its flank.
   const kd = Math.hypot(x - (oakX + (oakX - beX) * 0.35), z - (oakZ + (oakZ - beZ) * 0.35));
-  h += 8.5 * Math.exp(-((kd / 15) ** 2.1));
+  h += 6 * Math.exp(-((kd / 24) ** 2));
   return h;
 }
 
@@ -598,9 +598,17 @@ const smax = (a, b, k) => {
   return Math.max(a, b) + h * h * k * 0.25;
 };
 function bagEndCover(hole, u, v, hw) {
-  const r = Math.hypot(Math.max(-u, 0) / 20, v / (hw + 15));
+  // A gentle, rounded mound: just above the hoods at the facade, rising slowly as it goes back into
+  // the knoll, and rolling down to the sides past the ends of the house.
+  const back = Math.max(-u, 0);
+  const lat = Math.abs(v) / (hw + 14 + back * 0.4);
+  const across = lat >= 1 ? 0 : Math.cos(lat * Math.PI / 2) ** 1.2;
+  const rise = 4.3 + 2.8 * smoothstep(0, 22, back);
+  const tail = 1 - smoothstep(24, 40, back);
   const front = 1 - smoothstep(0, 8, u);
-  return hole.y + 4.6 * (r >= 1 ? 0 : 1 - smoothstep(0.3, 1, r)) * front;
+  // Right behind the facade the turf must clear the hoods across the whole front.
+  const clear = back < 3 && Math.abs(v) < hw + 0.5 ? 4.3 : 0;
+  return hole.y + Math.max(rise * across * tail, clear) * front;
 }
 
 function holeCut(hole, dx, dz, h) {
@@ -643,7 +651,13 @@ function holeCut(hole, dx, dz, h) {
   if (hole.arc) {
     // Behind a curved facade the knoll carries the turf; just make sure it clears the facade.
     // Behind the curved facade: one smooth dome under the knoll, easing into the hill.
-    return smax(h, bagEndCover(hole, u, v, hw), 3.0);
+    // Behind the house the hill is eased into a gentle rise (the set's turf rolls back from the
+    // hoods rather than climbing steeply), then the rounded cover is laid over it.
+    const back = -u;
+    const gentle = hole.y + 4.3 + back * 0.2;
+    const k = (1 - smoothstep(16, 30, back)) * (1 - smoothstep(hw + 6, hw + 18, Math.abs(v)));
+    const eased = h > gentle ? lerp(h, gentle, k) : h;
+    return smax(eased, bagEndCover(hole, u, v, hw), 3.0);
   }
   const dome = hole.y + moundTop(hole, v0, -u) + 0.2;
   return smax(h, dome, 2.5);

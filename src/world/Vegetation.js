@@ -7,6 +7,7 @@ import {
   Fn, uniform, texture, uv, vec3, vec4, float, instanceIndex, hash, sin, mix, pow, max, positionLocal,
   positionWorld, cameraPosition, normalize, dot, saturate, smoothstep, normalViewGeometry, color, uint, fwidth,
   attribute, select,
+  length,
 } from 'three/tsl';
 import { buildTree, leafTexture, SPECIES } from './TreeGen.js';
 import {
@@ -207,17 +208,26 @@ export class Vegetation {
     }
   }
 
-  /** Sway shared by wood and leaves, so leaves stay on their branches. */
+  /**
+   * Wind, shared by wood and leaves so leaves stay on their branches. The trunk barely leans; the
+   * motion lives in the outer crown, where each part of it moves on its own phase (so the tree
+   * never slides as one rigid piece), and nothing near the ground moves at all.
+   */
   _sway(extra) {
     const u = this.u;
     return Fn(() => {
       const p = positionLocal;
       const ph = hash(instanceIndex.add(uint(7))).mul(6.283);
       const h = max(p.y, 0);
-      const gust = sin(u.time.mul(0.8).add(ph)).mul(0.5).add(sin(u.time.mul(1.9).add(ph.mul(2))).mul(0.2)).add(0.6);
-      const bend = pow(h.mul(0.08), 1.6).mul(u.windStrength).mul(gust).mul(0.35);
-      const out = p.add(u.windDir.mul(bend)).toVar();
-      if (extra) out.addAssign(extra(p));
+      const r = length(p.xz);
+      const t = u.time;
+      const lean = h.mul(0.05).pow(2).mul(u.windStrength).mul(sin(t.mul(0.55).add(ph)).mul(0.3).add(0.7)).mul(0.05);
+      const outer = smoothstep(1.2, 8, r).mul(smoothstep(0.8, 3.5, h));
+      const wave = sin(t.mul(1.5).add(ph).add(p.x.mul(0.35)).add(p.z.mul(0.27)).add(h.mul(0.2))).mul(0.6)
+        .add(sin(t.mul(2.7).add(ph.mul(1.7)).add(p.x.mul(0.8)).sub(p.z.mul(0.5))).mul(0.3));
+      const branch = outer.mul(wave.add(0.35)).mul(u.windStrength.add(0.08)).mul(0.14);
+      const out = p.add(u.windDir.mul(lean.add(branch))).add(vec3(0, branch.mul(0.3), 0)).toVar();
+      if (extra) out.addAssign(extra(p).mul(smoothstep(0.15, 0.8, h)));
       return out;
     })();
   }
@@ -253,7 +263,7 @@ export class Vegetation {
     // Radial crown normals, not flipped on back faces, so the crown shades as one mass.
     m.normalNode = normalViewGeometry;
     m.positionNode = this._sway((p) => {
-      const f = sin(u.time.mul(5.5).add(p.x.mul(3.1)).add(p.z.mul(2.3)).add(p.y)).mul(0.04).mul(u.windStrength.add(0.15));
+      const f = sin(u.time.mul(5.5).add(p.x.mul(3.1)).add(p.z.mul(2.3)).add(p.y)).mul(0.025).mul(u.windStrength.add(0.15));
       return vec3(f, f.mul(0.5), f.negate());
     });
     // Sunlight glowing through the leaves when looking toward the sun.

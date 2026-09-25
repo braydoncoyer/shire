@@ -171,7 +171,7 @@ export function buildFacade(B, spec, base) {
   add('wood', band(bays, -0.08, 0.02, 0.1, 0.4), at(0, 0, 0), 0x3f2e20);
 
   // The turf hood: a thick overhanging lip of grassy earth following the arches.
-  add('turf', band(bays, 0.12, 0.55, 2.15, -1.6), at(0, 0, 0), 0xffffff);
+  add('turf', band(bays, 0.12, 0.55, 1.0, -0.45), at(0, 0, 0), 0xffffff);
   // Round the hood off where it ends, so it rolls into the mound instead of stopping flat.
   for (const b of [bays[0], bays[bays.length - 1]]) {
     const v = b === bays[0] ? b.a : b.b;
