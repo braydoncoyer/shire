@@ -334,23 +334,32 @@ export class HobbitHoles {
     const { lane, i: i0 } = best;
     const pts = lane.samples;
     const off = Math.max(best.d, lane.width / 2 + 0.35);
-    // Which side of the lane is the garden?
-    const sideAt = (i) => {
+    // Lane normal at sample i, oriented to stay on the same side as its neighbour (so the fence
+    // keeps to one side of the lane through bends and switchbacks).
+    const normalAt = (i) => {
       const [ax, az] = pts[Math.max(0, i - 1)], [bx, bz] = pts[Math.min(pts.length - 1, i + 1)];
-      const l = Math.hypot(bx - ax, bz - az) || 1, nx = -(bz - az) / l, nz = (bx - ax) / l;
-      const s = Math.sign(nx * (hole.x - pts[i][0]) + nz * (hole.z - pts[i][1])) || 1;
-      return [nx * s, nz * s];
+      const l = Math.hypot(bx - ax, bz - az) || 1;
+      return [-(bz - az) / l, (bx - ax) / l];
     };
+    // The garden side at the gate.
+    const [gx, gz] = normalAt(i0);
+    const side0 = Math.sign(gx * (hole.x - pts[i0][0]) + gz * (hole.z - pts[i0][1])) || 1;
     for (const dir of [-1, 1]) {
-      let prev = null, walked = 0;
+      let prev = null, walked = 0, prevN = null;
       for (let i = i0; i >= 0 && i < pts.length && walked < 26; i += dir) {
         if (i !== i0) walked += Math.hypot(pts[i][0] - pts[i - dir][0], pts[i][1] - pts[i - dir][1]);
-        const [nx, nz] = sideAt(i);
+        let [nx, nz] = normalAt(i);
+        nx *= side0; nz *= side0;
+        if (prevN && nx * prevN[0] + nz * prevN[1] < 0) { nx = -nx; nz = -nz; }
+        // A hairpin: the side has swung more than ~70 degrees; stop rather than cut across.
+        if (prevN && nx * prevN[0] + nz * prevN[1] < 0.35) break;
+        prevN = [nx, nz];
         const x = pts[i][0] + nx * off, z = pts[i][1] + nz * off;
         if (Math.hypot(x - gatePt.x, z - gatePt.z) < gate + 0.1) { prev = null; continue; }
-        // Stop where another path joins (the fence would cross it).
-        if (walked > 2 && laneMask(x + nx * 0.4, z + nz * 0.4) > 0.05) break;
+        // Stop where the fence would touch any path (a junction, or this lane after a bend).
+        if (walked > 2 && (laneMask(x, z) > 0.02 || laneMask(x + nx * 0.4, z + nz * 0.4) > 0.05)) break;
         const y = heightAt(x, z);
+        if (prev && Math.hypot(x - prev.x, z - prev.z) > 2) break;
         B.add('wood', box(0.05, 0.9, 0.05), mtx(x, y + 0.42, z, (rand() - 0.5) * 0.08, 0, (rand() - 0.5) * 0.08), WEATHERED);
         if (prev) {
           const len = Math.hypot(x - prev.x, z - prev.z), yaw = Math.atan2(-(z - prev.z), x - prev.x);
