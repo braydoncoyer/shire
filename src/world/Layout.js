@@ -104,7 +104,8 @@ function sculpt(x, z, h) {
   // Only the ground the village is built on is terraced; open slopes between lanes stay natural.
   const near = 1 - smoothstep(9, 22, sampleGrid(laneDist, x, z, 99));
   const knoll = smoothstep(26, 40, Math.hypot(x - oakX, z - oakZ)); // Bag End's knoll stays smooth
-  const w = village * shore * near * knoll * 0.8;
+  // The lanes now cut their own level benches, so general terracing is off.
+  const w = village * shore * near * knoll * 0;
   if (w > 0.001 && h > FIELD_Y - 2) {
     const T = 3.2;
     // Wobble the terrace lines so they follow the land rather than exact contours.
@@ -430,12 +431,19 @@ function resample(pts, step) {
     const stair = new Array(n).fill(false);
     prof[0] = fixed[0] ?? t[0];
     let climbing = false;
+    // Steps only on the village's footpaths; farm tracks and roads just ramp.
+    const [sx, sz] = pts[Math.floor(n / 2)];
+    const canStep = ['footway', 'path', 'steps'].includes(lane.kind) && Math.hypot(sx - VILLAGE.x, sz - VILLAGE.z) < VILLAGE.r + 20;
+    const grade = canStep ? LANE_GRADE : 0.14;
+    let flight = 0, rest = 0;
     for (let i = 1; i < n; i++) {
       if (fixed[i] !== null) { prof[i] = fixed[i]; climbing = false; continue; }
       const gap = t[i] - prof[i - 1];
-      if (Math.abs(gap) > STAIR_TRIGGER) climbing = true;
+      if (canStep && !climbing && rest <= 0 && Math.abs(gap) > STAIR_TRIGGER) { climbing = true; flight = 0; }
+      if (climbing && ++flight > 8) { climbing = false; rest = 6; } // a landing after each flight
+      rest--;
       if (climbing && Math.abs(gap) < 0.1) climbing = false;
-      const g = climbing ? STAIR_GRADE : LANE_GRADE;
+      const g = climbing ? STAIR_GRADE : grade;
       prof[i] = prof[i - 1] + clamp(gap, -g, g);
       stair[i] = climbing;
     }
@@ -491,7 +499,7 @@ function baseHeight(x, z) {
     // The lane is level at its profile height; the land meets it in a bank whose width grows with
     // the height difference (about 40 degrees), cut above and built up below.
     const surf = lane.y - 0.1;
-    const bank = 0.4 + Math.abs(h - surf) * 1.2;
+    const bank = 0.6 + Math.abs(h - surf) * 2.1;
     h = lerp(surf, h, smoothstep(0, bank, lane.edge));
   }
   // Streams run in small valleys: a channel, then gentle banks rising away from it.
@@ -554,21 +562,24 @@ function holeSpec(rand, o) {
   spec.width = (laid[laid.length - 1].b - laid[0].a) * scale;
   spec.center = ((laid[0].a + laid[laid.length - 1].b) / 2) * scale;
   // The turf dome must stand above the facade's hood everywhere.
-  const rv = spec.width / 2 + 1.6;
+  const rv = spec.width / 2 + 5;
   let H = 0;
   for (let v = laid[0].a; v <= laid[laid.length - 1].b; v += 0.1) {
-    const q = 1 - ((v * scale - spec.center) / rv) ** 2;
-    H = Math.max(H, ((facadeTop(laid, v) + 0.2) * scale) / Math.sqrt(Math.max(q, 0.05)));
+    const f = moundProfile(Math.abs(v * scale - spec.center) / rv);
+    H = Math.max(H, ((facadeTop(laid, v) + 0.25) * scale) / Math.max(f, 0.05));
   }
   spec.crown = H - 1.15;
   return spec;
 }
 
 /** Height of the turf dome above the yard at (v across the facade, d behind it). */
+// A broad, low hillock rather than a dome: flat-topped over the facade, easing out over many
+// meters to the sides and behind, so neighbouring holes read as one rolling bank.
+const moundProfile = (r) => (r >= 1 ? 0 : 1 - smoothstep(0.35, 1, r));
 export function moundTop(hole, v, d = 0) {
-  const rv = hole.width / 2 + 1.6, rd = 8 * Math.max(hole.scale, 0.7);
-  const q = 1 - ((v - (hole.center || 0)) / rv) ** 2 - (Math.max(d, 0) / rd) ** 2;
-  return q > 0 ? (1.15 * hole.scale + hole.crown) * Math.sqrt(q) : 0;
+  const rv = hole.width / 2 + 5, rd = 14 * Math.max(hole.scale, 0.7);
+  const r = Math.hypot((v - (hole.center || 0)) / rv, Math.max(d, 0) / rd);
+  return (1.15 * hole.scale + hole.crown) * moundProfile(r);
 }
 export function holeLocal(hole, dx, dz) {
   if (hole.arc) {
@@ -586,6 +597,12 @@ const smax = (a, b, k) => {
   const h = Math.max(k - Math.abs(a - b), 0) / k;
   return Math.max(a, b) + h * h * k * 0.25;
 };
+function bagEndCover(hole, u, v, hw) {
+  const r = Math.hypot(Math.max(-u, 0) / 20, v / (hw + 15));
+  const front = 1 - smoothstep(0, 8, u);
+  return hole.y + 4.6 * (r >= 1 ? 0 : 1 - smoothstep(0.3, 1, r)) * front;
+}
+
 function holeCut(hole, dx, dz, h) {
   const [u, v0] = holeLocal(hole, dx, dz);
   const v = v0 - hole.center;
@@ -603,25 +620,33 @@ function holeCut(hole, dx, dz, h) {
     }
   }
   if (u > -0.6) {
-    const lat = 1 - smoothstep(hw + 0.6, hw + (hole.arc ? 9 : 4), Math.abs(v));
-    const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + 1.8, u);
-    let target = hole.y;
+    let target0 = hole.y;
+    // Blend widths grow with how far the yard is cut into (or built out from) the hill, so the sides
+    // are grassy slopes rather than walls.
+    const spread = 1.2 + Math.abs(h - target0) * 1.9;
+    // Bag End's yard stops at the ends of its facade; beyond them the knoll slopes down (below).
+    const lat = hole.arc ? 1 - smoothstep(hw - 0.3, hw + 2.5, Math.abs(v)) : 1 - smoothstep(hw + 0.6, hw + Math.max(4, spread), Math.abs(v));
+    const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + Math.max(1.8, spread * 0.8), u);
+    let target = target0;
     if (hole.terrace && u > hole.terrace) {
       // Below the retaining wall the garden slopes down to the lane.
       const t = smoothstep(hole.terrace, hole.yard + 0.5, u);
       target = lerp(hole.y - 0.9, hole.laneY + 0.1, t);
     }
     // Bag End's grounds stop at the lanes around them (except at its own gate).
-    const keepLane = hole.arc && Math.abs(v0) > 2.5 ? 1 - laneMask(hole.x + dx * 0 + dx, hole.z + dz * 0 + dz) : 1;
-    return lerp(h, target, lat * front * keepLane);
+    const keepLane = hole.arc && Math.abs(v0) > 2.5 ? 1 - laneMask(hole.x + dx, hole.z + dz) : 1;
+    const yardH = lerp(h, target, lat * front * keepLane);
+    if (!hole.arc) return yardH;
+    // Past the ends of Bag End's garden the knoll slopes down to the lane instead of ending in a wall.
+    return smax(yardH, bagEndCover(hole, u, v, hw) * (1 - lat) + yardH * lat, 1.5);
   }
   if (hole.arc) {
     // Behind a curved facade the knoll carries the turf; just make sure it clears the facade.
-    const cover = hole.y + 3.9 * (1 - smoothstep(4, 16, -u)) * (1 - smoothstep(hw - 1, hw + 9, Math.abs(v)));
-    return smax(h, cover, 1.0);
+    // Behind the curved facade: one smooth dome under the knoll, easing into the hill.
+    return smax(h, bagEndCover(hole, u, v, hw), 3.0);
   }
   const dome = hole.y + moundTop(hole, v0, -u) + 0.2;
-  return smax(h, dome, 1.2);
+  return smax(h, dome, 2.5);
 }
 
 function makeHole(rand, x, z, fx, fz, y, yard, o) {
@@ -630,7 +655,7 @@ function makeHole(rand, x, z, fx, fz, y, yard, o) {
     ...spec, x, z, fx, fz, y, yard, color: spec.doorColor, bagEnd: !!o.bagEnd, name: o.name || '', segments: o.segments,
     yaw: Math.atan2(fx, fz),
     veg: !o.bagEnd && rand() < 0.5,
-    reach2: Math.max(yard + 3, spec.width / 2 + 4, 11) ** 2,
+    reach2: Math.max(yard + 3, spec.width / 2 + 7, 16) ** 2,
   };
 }
 

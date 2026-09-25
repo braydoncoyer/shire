@@ -22,9 +22,11 @@ export class HobbitHoles {
     this.lanterns = [];
     this.chimneys = [];
     this.veg = [];
+    this.signs = [];
     for (const hole of HOLES) this._hole(B, hole);
     this.group = B.build(mats);
     this.group.add(this._vegetables());
+    for (const m of this.signs) this.group.add(partySign(m));
   }
 
   _hole(B, hole) {
@@ -112,7 +114,9 @@ export class HobbitHoles {
       B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), atG(s * gate, 1.2, fz), TIMBER);
     }
     // The gate, swung open.
-    for (const y of [0.35, 0.85]) B.add('wood', box(gate * 1.9, 0.08, 0.05), atG(-gate, y, fz, 0, -1.25).multiply(mtx(gate * 0.95, 0, 0)), WEATHERED);
+    const swing = hole.bagEnd ? -0.35 : -1.25;
+    for (const y of [0.35, 0.85]) B.add('wood', box(gate * 1.9, 0.08, 0.05), atG(-gate, y, fz, 0, swing).multiply(mtx(gate * 0.95, 0, 0)), WEATHERED);
+    if (hole.bagEnd) for (let k = 0; k < 6; k++) B.add('wood', box(0.05, 0.8, 0.04), atG(-gate, 0.5, fz, 0, swing).multiply(mtx(0.12 + k * 0.24, 0, 0)), WEATHERED);
 
     // Letterbox: a hollowed log on a post, or a painted box.
     const lbx = gate + 0.45;
@@ -120,7 +124,13 @@ export class HobbitHoles {
     if (hole.bagEnd || rand() < 0.5) B.add('wood', cylinder(0.14, 0.14, 0.62, 10), atG(lbx, 1.1, fz + 0.3, 0, 0, Math.PI / 2), 0x7a5a3c);
     else B.add('paint', box(0.3, 0.24, 0.4), atG(lbx, 1.1, fz + 0.3), hole.doorColor);
     // Bag End's "No admittance except on party business" board, hung on the gate.
-    if (hole.bagEnd) B.add('plaster', box(0.75, 0.42, 0.03), atG(-gate + 0.1, 0.72, fz + 0.75, 0, -1.25), 0xece4cc);
+    if (hole.bagEnd) {
+      // The sign hangs on the gate, which stands only slightly ajar.
+      this.signs.push(atG(-gate, 0.62, fz, 0, -0.35).multiply(mtx(gate * 0.95, 0, 0.05)));
+      // The wattle fence runs on along the whole garden front, following the curve of the lane.
+      this._arcFence(B, hole, arcW, -13.5, -3.2, rand);
+      this._arcFence(B, hole, arcW, 3.2, 10.5, rand);
+    }
 
     if (hole.arc) this._bagEndGarden(B, hole, at, atG, arcW, rand);
 
@@ -308,6 +318,23 @@ export class HobbitHoles {
     }
   }
 
+  /** Wattle fence along Bag End's curved lane frontage, from arc position v0 to v1. */
+  _arcFence(B, hole, arcW, v0, v1, rand) {
+    const u = hole.yard + 0.15;
+    let prev = null;
+    for (let v = v0; v <= v1 + 1e-6; v += 0.45) {
+      const p = arcW(v, u), y = heightAt(p.x, p.z);
+      B.add('wood', box(0.05, 0.9, 0.05), mtx(p.x, y + 0.42, p.z, (rand() - 0.5) * 0.08, 0, (rand() - 0.5) * 0.08), WEATHERED);
+      if (prev) {
+        const len = Math.hypot(p.x - prev.x, p.z - prev.z), yaw = Math.atan2(-(p.z - prev.z), p.x - prev.x);
+        for (let yy = 0.12; yy < 0.75; yy += 0.07)
+          B.add('wood', box(len + 0.04, 0.045, 0.035), mtx((p.x + prev.x) / 2, (y + prev.y) / 2 + yy, (p.z + prev.z) / 2, 0, yaw, 0), WILLOW);
+        this.colliders.push({ x: (p.x + prev.x) / 2, z: (p.z + prev.z) / 2, hx: len / 2, hz: 0.1, rot: yaw });
+      }
+      prev = { x: p.x, z: p.z, y };
+    }
+  }
+
   _fence(B, at, style, a, b, z, rand) {
     const len = b - a;
     if (style === 'picket') {
@@ -348,4 +375,39 @@ export class HobbitHoles {
     });
     return group;
   }
+}
+
+/** "No admittance except on party business", hand-lettered on a weathered board. */
+function partySign(matrix) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#e8e0cc';
+  g.fillRect(0, 0, 512, 256);
+  for (let i = 0; i < 400; i++) {
+    g.fillStyle = `rgba(90,70,40,${Math.random() * 0.06})`;
+    g.fillRect(Math.random() * 512, Math.random() * 256, 30 + Math.random() * 80, 1 + Math.random() * 2);
+  }
+  g.strokeStyle = '#6a5a44';
+  g.lineWidth = 10;
+  g.strokeRect(5, 5, 502, 246);
+  g.fillStyle = '#2a2018';
+  g.textAlign = 'center';
+  g.font = 'italic 600 44px "Cormorant Garamond", Georgia, serif';
+  g.fillText('No admittance', 256, 88);
+  g.font = 'italic 600 38px "Cormorant Garamond", Georgia, serif';
+  g.fillText('except on', 256, 142);
+  g.fillText('party business', 256, 196);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.4, 0.025), [
+    ...Array(4).fill(new THREE.MeshStandardNodeMaterial({ color: 0x6a5a44, roughness: 0.9 })),
+    new THREE.MeshStandardNodeMaterial({ map: tex, roughness: 0.85 }),
+    new THREE.MeshStandardNodeMaterial({ color: 0x6a5a44, roughness: 0.9 }),
+  ]);
+  board.matrixAutoUpdate = false;
+  board.matrix.copy(matrix);
+  board.castShadow = board.receiveShadow = true;
+  return board;
 }
