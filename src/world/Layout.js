@@ -314,7 +314,11 @@ export const MILL = (() => {
   if (lakeDist(f.x + px * 8, f.z + pz * 8) > lakeDist(f.x - px * 8, f.z - pz * 8)) { px = -px; pz = -pz; }
   const y = avgDEM(f.x, f.z, 8) + 0.2;
   // Local +z points away from the water (the door side).
-  return { x: f.x, z: f.z, y, len: f.len, wid: f.wid, water: WATER_Y, yaw: Math.atan2(-px, -pz), wx: px, wz: pz };
+  const yaw = Math.atan2(-px, -pz);
+  // The wheel stands off the water-side wall (see Buildings.js: local (-2, -D/2 - 0.85)).
+  const D = Math.min(f.wid, 8), lx = -2, lz = -D / 2 - 0.85;
+  const wheelX = f.x + lx * Math.cos(yaw) + lz * Math.sin(yaw), wheelZ = f.z - lx * Math.sin(yaw) + lz * Math.cos(yaw);
+  return { x: f.x, z: f.z, y, len: f.len, wid: f.wid, water: WATER_Y, yaw, wx: px, wz: pz, wheelX, wheelZ };
 })();
 
 const polyDistSimple = (poly, x, z) => {
@@ -354,7 +358,7 @@ export const GREEN_DRAGON = (() => {
 
 // Level pads for buildings, applied last in heightAt.
 const PADS = [
-  { x: MILL.x, z: MILL.z, r0: 9, r1: 13, y: MILL.y },
+  { poly: building("Sandyman's Mill").poly, r0: 0.8, r1: 4, y: MILL.y },
   { poly: GREEN_DRAGON.poly, r0: 2.5, r1: 9, y: GREEN_DRAGON.y },
   { poly: GREEN_DRAGON.shed, r0: 1.5, r1: 5, y: GREEN_DRAGON.shedY },
 ];
@@ -516,10 +520,9 @@ function baseHeight(x, z) {
     const d = p.poly ? Math.max(0, polyDistSimple(p.poly, x, z)) : Math.hypot(x - p.x, z - p.z);
     if (d < p.r1) h = lerp(h, p.y, 1 - smoothstep(p.r0, p.r1, d));
   }
-  // Dry land (lanes included) never dips below the water it borders.
-  const pd = pondDist(x, z), ld = lakeDist(x, z);
-  if (pd >= 0 && pd < 8) h = Math.max(h, POND_Y + 0.12 + pd * 0.04);
-  if (ld >= 0 && ld < 8) h = Math.max(h, WATER_Y + 0.12 + ld * 0.04);
+  // The mill race: a channel of open water under the waterwheel.
+  const wd = Math.hypot(x - MILL.wheelX, z - MILL.wheelZ);
+  if (wd < 6) h = lerp(Math.min(h, WATER_Y - 1.1), h, smoothstep(2.6, 6, wd));
   return h;
 }
 
@@ -622,9 +625,11 @@ function holeYard(hole, dx, dz, h) {
   const v = v0 - hole.center, hw = hole.width / 2;
   // Blend widths grow with how far the yard is cut into (or built out from) the hill, so the sides
   // are grassy slopes rather than walls.
+  // (Blends stay inside the hole's reach, or they'd end in a wall at its edge.)
+  const R = Math.sqrt(hole.reach2) - 1;
   const spread = 1.2 + Math.abs(h - hole.y) * 1.9;
-  const lat = 1 - smoothstep(hw + 0.6, hw + Math.max(4, spread), Math.abs(v));
-  const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + Math.max(1.8, spread * 0.8), u);
+  const lat = 1 - smoothstep(hw + 0.6, Math.min(hw + Math.max(4, spread), R), Math.abs(v));
+  const front = 1 - smoothstep(hole.yard + 0.2, Math.min(hole.yard + Math.max(1.8, spread * 0.8), R), u);
   return lerp(h, hole.y, lat * front);
 }
 
@@ -650,12 +655,10 @@ function holeMound(hole, dx, dz, h) {
     let gap = Infinity;
     for (const [a, b] of hole.segSpans) gap = Math.min(gap, Math.max(a - v0, v0 - b, 0));
     const inside = v0 > hole.segSpans[0][0] - 3 && v0 < hole.segSpans[hole.segSpans.length - 1][1] + 3;
-    if (inside) {
-      const bulge = hole.y + 3.9 * smoothstep(0.02, 1.4, gap) * (1 - smoothstep(-0.4, 2.6, u));
-      yardH = smax(yardH, bulge, 0.8);
-    }
+    const amt = 3.9 * smoothstep(0.02, 1.4, gap) * (1 - smoothstep(-0.4, 2.6, u));
+    if (inside && amt > 0.01) yardH = Math.max(yardH, hole.y + amt);
     // Past the ends of the garden the knoll rolls down to the lane.
-    return smax(yardH, bagEndCover(hole, u, v, hw) * (1 - lat) + yardH * lat, 1.5);
+    return Math.max(yardH, bagEndCover(hole, u, v, hw) * (1 - lat) + yardH * lat);
   }
   // Behind the house the hill eases into a gentle rise, with the rounded cover laid over it.
   const back = -u;
