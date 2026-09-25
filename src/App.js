@@ -96,6 +96,18 @@ export class App {
     scene.traverse((o) => {
       if (o.isMesh && o.material?.alphaTest > 0) o.renderOrder = 1;
     });
+    // The world doesn't move: compute its matrices once instead of every frame (except the turning
+    // mill wheel).
+    const moving = new Set();
+    this.buildings.wheel.traverse((o) => moving.add(o));
+    for (const g of [this.terrain.group, this.water.group, this.grass.group, this.vegetation.group, this.greenDragon.group, this.holes.group, this.boundaries.group, this.shrubs.group, this.buildings.group]) {
+      g.updateMatrixWorld(true);
+      g.traverse((o) => {
+        if (moving.has(o)) return;
+        o.matrixAutoUpdate = false;
+        o.matrixWorldAutoUpdate = false;
+      });
+    }
 
 
     this.input = new Input(renderer.domElement);
