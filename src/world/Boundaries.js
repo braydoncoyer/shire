@@ -3,7 +3,7 @@
 
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box } from './Kit.js';
-import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES, LANES, VILLAGE } from './Layout.js';
+import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES, LANES, VILLAGE, LANE_STAIRS } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 
 const WEATHERED = 0x7d6e5a, POST = 0x6a5a48;
@@ -84,6 +84,61 @@ export class Boundaries {
         }
         prev = ok ? { x, z, y } : null;
       });
+    }
+    // Rock outcrops in the tall banks the lanes are cut into.
+    const ROCK = [0x7d776a, 0x8c8575, 0x6b675c, 0x958d7a];
+    for (const lane of LANES) {
+      if (!lane.samples || Math.hypot(lane.samples[0][0] - VILLAGE.x, lane.samples[0][1] - VILLAGE.z) > VILLAGE.r + 60) continue;
+      for (let i = 1; i < lane.samples.length - 1; i += 2) {
+        const [x, z] = lane.samples[i], [nx, nz] = lane.samples[i + 1];
+        const l = Math.hypot(nx - x, nz - z) || 1, px = -(nz - z) / l, pz = (nx - x) / l;
+        for (const s of [-1, 1]) {
+          const off = lane.width / 2 + 1.2;
+          const bx = x + px * s * off, bz = z + pz * s * off;
+          const dh = heightAt(bx, bz) - lane.profile[i];
+          if (dh < 1.3 || rand() < 0.45 || yardAt(bx, bz) > 0 || nearHole(bx, bz)) continue;
+          const r = 0.5 + rand() * Math.min(1.3, dh * 0.35);
+          const g = new THREE.IcosahedronGeometry(1, 1);
+          const pos = g.attributes.position;
+          for (let k = 0; k < pos.count; k++) {
+            const f = 0.8 + rand() * 0.35;
+            pos.setXYZ(k, pos.getX(k) * f, pos.getY(k) * f * 0.7, pos.getZ(k) * f);
+          }
+          g.computeVertexNormals();
+          const y = lane.profile[i] + 0.2 + rand() * dh * 0.55;
+          B.add('rock', g, mtx(bx + px * s * r * 0.3, y, bz + pz * s * r * 0.3, rand(), rand() * 6, rand() * 0.5, r * 1.4, r, r), ROCK[Math.floor(rand() * ROCK.length)]);
+        }
+      }
+    }
+
+    // Flights of stone steps where the lanes climb.
+    const STEP = [0x857d6e, 0x9a907e, 0x7a7466, 0x8e8676];
+    for (const st of LANE_STAIRS) {
+      const len = [0];
+      for (let i = 1; i < st.pts.length; i++) len.push(len[i - 1] + Math.hypot(st.pts[i][0] - st.pts[i - 1][0], st.pts[i][1] - st.pts[i - 1][1]));
+      const L = len[len.length - 1], rise = st.ys[st.ys.length - 1] - st.ys[0];
+      const n = Math.max(2, Math.round(Math.abs(rise) / 0.19));
+      const at = (d) => {
+        let i = 1;
+        while (i < len.length - 1 && len[i] < d) i++;
+        const f = (d - len[i - 1]) / Math.max(len[i] - len[i - 1], 1e-6);
+        const [ax, az] = st.pts[i - 1], [bx, bz] = st.pts[i];
+        return { x: ax + (bx - ax) * f, z: az + (bz - az) * f, y: st.ys[i - 1] + (st.ys[i] - st.ys[i - 1]) * f, yaw: Math.atan2(-(bz - az), bx - ax) };
+      };
+      for (let k = 0; k < n; k++) {
+        // Each tread sits at the height of the higher end of its run.
+        const d0 = (k / n) * L, d1 = ((k + 1) / n) * L;
+        const a = at((d0 + d1) / 2), top = Math.max(at(d0).y, at(d1).y) - 0.08;
+        const w = st.width * 0.92;
+        let x = -w / 2;
+        while (x < w / 2 - 0.1) {
+          const sw = Math.min(0.5 + rand() * 0.5, w / 2 - x);
+          const ox = x + sw / 2;
+          const m = mtx(a.x, top - 0.14, a.z, 0, a.yaw, 0).multiply(mtx((rand() - 0.5) * 0.04, 0, ox, (rand() - 0.5) * 0.04, (rand() - 0.5) * 0.1, (rand() - 0.5) * 0.04));
+          B.add('rock', box(L / n + 0.14, 0.3, sw - 0.03), m, STEP[Math.floor(rand() * STEP.length)]);
+          x += sw;
+        }
+      }
     }
     this.group = B.build(mats);
   }

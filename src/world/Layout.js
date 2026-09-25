@@ -136,10 +136,11 @@ const laneDist = new Float32Array(N * N).fill(99);
 const laneWidth = new Float32Array(N * N).fill(0);
 const streamDist = new Float32Array(N * N).fill(99);
 const streamBed = new Float32Array(N * N).fill(0);
+const laneHeight = new Float32Array(N * N).fill(0); // surface height of the nearest lane
 const yardGrid = new Uint8Array(N * N);
 const bedGrid = new Uint8Array(N * N);
 
-function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = width * 0.5 + 6) {
+function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = width * 0.5 + 16) {
   for (let s = 0; s < pts.length - 1; s++) {
     const [ax, az] = pts[s], [bx, bz] = pts[s + 1];
     const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach + INNER_HALF) / RES));
@@ -357,6 +358,110 @@ const PADS = [
 ];
 
 // ---------------------------------------------------------------------------------------------
+// Lane profiles
+//
+// On the set the lanes run level along the hillside, terraced into it, and climb in short flights
+// of stone steps. Each lane gets a height profile along its length: it follows the (smoothed) land
+// at no more than a gentle grade, and when the land has pulled more than STAIR_TRIGGER away, the
+// difference is taken up at once by a flight of steps. Across its width a lane is level; the land
+// is cut into a bank above it and built up below it (see baseHeight).
+
+const LANE_GRADE = 0.07, STAIR_TRIGGER = 1.3, STAIR_GRADE = 0.62;
+export const LANE_STAIRS = []; // { pts: [[x,z]...], y0, y1, width }
+
+function resample(pts, step) {
+  const out = [];
+  for (let s = 0; s < pts.length - 1; s++) {
+    const [ax, az] = pts[s], [bx, bz] = pts[s + 1];
+    const len = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.ceil(len / step));
+    for (let k = 0; k < n; k++) out.push([ax + ((bx - ax) * k) / n, az + ((bz - az) * k) / n]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+
+{
+  const baked = new Uint8Array(N * N); // cells whose laneHeight is final
+  const cell = (x, z) => {
+    const i = Math.round((x + INNER_HALF) / RES), j = Math.round((z + INNER_HALF) / RES);
+    return i < 0 || j < 0 || i >= N || j >= N ? -1 : j * N + i;
+  };
+  const fixedPts = [];
+  for (const [t, y] of [[-BRIDGE.half, BRIDGE.end0], [BRIDGE.half, BRIDGE.end1]])
+    fixedPts.push({ x: BRIDGE.x + BRIDGE.dx * t, z: BRIDGE.z + BRIDGE.dz * t, y: y + 0.05 });
+
+  laneDist.fill(99);
+  laneWidth.fill(0);
+  // Long lanes first; shorter ones join them at the heights already set.
+  const order = [...LANES].sort((a, b) => b.pts.length - a.pts.length);
+  for (const lane of order) {
+    const pts = resample(lane.pts, 1);
+    const n = pts.length;
+    const nat = pts.map(([x, z]) => naturalHeight(x, z));
+    // Smoothed land.
+    const t = nat.map((_, i) => {
+      let sum = 0, w = 0;
+      for (let k = -5; k <= 5; k++) {
+        const j = Math.min(n - 1, Math.max(0, i + k)), g = Math.exp(-(k * k) / 12);
+        sum += nat[j] * g; w += g;
+      }
+      return sum / w;
+    });
+    // Junctions with lanes already laid, and the bridge ends, are fixed.
+    const fixed = new Array(n).fill(null);
+    pts.forEach(([x, z], i) => {
+      const c = cell(x, z);
+      if (c >= 0 && baked[c] && laneDist[c] < laneWidth[c] * 0.5 + 0.8) fixed[i] = laneHeight[c];
+      for (const f of fixedPts) if (Math.hypot(x - f.x, z - f.z) < 2.5) fixed[i] = f.y;
+    });
+    // Pull the target toward fixed heights over the approach to them.
+    for (let i = 0; i < n; i++) {
+      if (fixed[i] === null) continue;
+      for (let k = -10; k <= 10; k++) {
+        const j = i + k;
+        if (j < 0 || j >= n || fixed[j] !== null) continue;
+        const w = 1 - Math.abs(k) / 11;
+        t[j] = lerp(t[j], fixed[i], w * w);
+      }
+    }
+    // Walk the lane: gentle grade, flights of steps when the land runs away.
+    const prof = new Array(n);
+    const stair = new Array(n).fill(false);
+    prof[0] = fixed[0] ?? t[0];
+    let climbing = false;
+    for (let i = 1; i < n; i++) {
+      if (fixed[i] !== null) { prof[i] = fixed[i]; climbing = false; continue; }
+      const gap = t[i] - prof[i - 1];
+      if (Math.abs(gap) > STAIR_TRIGGER) climbing = true;
+      if (climbing && Math.abs(gap) < 0.1) climbing = false;
+      const g = climbing ? STAIR_GRADE : LANE_GRADE;
+      prof[i] = prof[i - 1] + clamp(gap, -g, g);
+      stair[i] = climbing;
+    }
+    lane.profile = prof;
+    lane.samples = pts;
+    // Record flights of steps.
+    for (let i = 1; i < n; i++) {
+      if (!stair[i] || stair[i - 1]) continue;
+      let j = i;
+      while (j + 1 < n && stair[j + 1]) j++;
+      if (Math.abs(prof[j] - prof[i - 1]) > 0.35) LANE_STAIRS.push({ pts: pts.slice(i - 1, j + 1), ys: prof.slice(i - 1, j + 1), width: lane.width });
+      i = j;
+    }
+    bakePolyline(pts, lane.width, laneDist, laneWidth, prof, laneHeight);
+    for (let k = 0; k < N * N; k++) if (!baked[k] && laneDist[k] < 99) baked[k] = 1;
+  }
+}
+
+/** Nearest lane's surface height and signed distance from its edge (negative on the lane). */
+function laneAt(x, z) {
+  const d = sampleGrid(laneDist, x, z, 99);
+  if (d > 30) return null;
+  const w = sampleGrid(laneWidth, x, z, 2) || 2;
+  return { y: sampleGrid(laneHeight, x, z, 0), edge: d - w * 0.5 };
+}
+
+// ---------------------------------------------------------------------------------------------
 // Height (without hobbit holes yet; they're dug below once placed)
 
 function naturalHeight(x, z) {
@@ -380,12 +485,13 @@ function naturalHeight(x, z) {
 
 function baseHeight(x, z) {
   let h = naturalHeight(x, z);
-  const lm = laneMask(x, z);
-  if (lm > 0.001) {
-    // Level the lane across its width by averaging a neighborhood, then sink it slightly.
-    const e = 1.4;
-    const avg = (naturalHeight(x + e, z) + naturalHeight(x - e, z) + naturalHeight(x, z + e) + naturalHeight(x, z - e) + h) / 5;
-    h = lerp(h, avg - 0.15, lm);
+  const lane = laneAt(x, z);
+  if (lane) {
+    // The lane is level at its profile height; the land meets it in a bank whose width grows with
+    // the height difference (about 40 degrees), cut above and built up below.
+    const surf = lane.y - 0.1;
+    const bank = 0.4 + Math.abs(h - surf) * 1.2;
+    h = lerp(surf, h, smoothstep(0, bank, lane.edge));
   }
   // Streams run in small valleys: a channel, then gentle banks rising away from it.
   const sd = sampleGrid(streamDist, x, z, 99);
@@ -655,12 +761,12 @@ function nearestOnLanes(x, z, lanes) {
       // Bag End's garden is lawn and flagstones; only the flight of steps is kept clear.
       const a = [hole.x + hole.fx * (hole.terrace + 0.2) + hole.fz * 0.2, hole.z + hole.fz * (hole.terrace + 0.2) - hole.fx * 0.2];
       const b = [hole.x + hole.fx * (hole.yard + 0.4) + hole.fz * 0.2, hole.z + hole.fz * (hole.yard + 0.4) - hole.fx * 0.2];
-      bakePolyline([a, b], 1.6, laneDist, laneWidth);
+      bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, hole.laneY + 0.1], laneHeight, 1);
       continue;
     }
     const a = [hole.x + hole.fx * 1.3, hole.z + hole.fz * 1.3];
     const b = [hole.x + hole.fx * (hole.yard + 1.8), hole.z + hole.fz * (hole.yard + 1.8)];
-    bakePolyline([a, b], hole.bagEnd ? 1.5 : 1.1, laneDist, laneWidth);
+    bakePolyline([a, b], hole.bagEnd ? 1.5 : 1.1, laneDist, laneWidth, [hole.y + 0.1, baseHeight(...b) + 0.1], laneHeight, 2);
   }
   for (const hole of HOLES) {
     const r = Math.sqrt(hole.reach2);
