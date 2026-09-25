@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box, cylinder } from './Kit.js';
 import { buildFacade } from './HoleModel.js';
-import { HOLES, heightAt } from './Layout.js';
+import { HOLES, heightAt, laneMask } from './Layout.js';
 import { mulberry32 } from '../util/noise.js';
 
 const TIMBER = 0x5c4330, WEATHERED = 0x7d6e5a, WILLOW = 0x8a7550;
@@ -324,6 +324,8 @@ export class HobbitHoles {
     let prev = null;
     for (let v = v0; v <= v1 + 1e-6; v += 0.45) {
       const p = arcW(v, u), y = heightAt(p.x, p.z);
+      // Stop where the fence would cross a lane (Bagshot Row curves away from the garden).
+      if (laneMask(p.x, p.z) > 0.05) { prev = null; continue; }
       B.add('wood', box(0.05, 0.9, 0.05), mtx(p.x, y + 0.42, p.z, (rand() - 0.5) * 0.08, 0, (rand() - 0.5) * 0.08), WEATHERED);
       if (prev) {
         const len = Math.hypot(p.x - prev.x, p.z - prev.z), yaw = Math.atan2(-(p.z - prev.z), p.x - prev.x);

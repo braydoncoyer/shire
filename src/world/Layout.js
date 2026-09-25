@@ -516,6 +516,10 @@ function baseHeight(x, z) {
     const d = p.poly ? Math.max(0, polyDistSimple(p.poly, x, z)) : Math.hypot(x - p.x, z - p.z);
     if (d < p.r1) h = lerp(h, p.y, 1 - smoothstep(p.r0, p.r1, d));
   }
+  // Dry land (lanes included) never dips below the water it borders.
+  const pd = pondDist(x, z), ld = lakeDist(x, z);
+  if (pd >= 0 && pd < 8) h = Math.max(h, POND_Y + 0.12 + pd * 0.04);
+  if (ld >= 0 && ld < 8) h = Math.max(h, WATER_Y + 0.12 + ld * 0.04);
   return h;
 }
 
@@ -599,68 +603,66 @@ const smax = (a, b, k) => {
 };
 function bagEndCover(hole, u, v, hw) {
   // A gentle, rounded mound: just above the hoods at the facade, rising slowly as it goes back into
-  // the knoll, and rolling down to the sides past the ends of the house.
+  // the knoll, and rolling down to the sides past the ends of the house. Everything is smooth.
   const back = Math.max(-u, 0);
   const lat = Math.abs(v) / (hw + 14 + back * 0.4);
   const across = lat >= 1 ? 0 : Math.cos(lat * Math.PI / 2) ** 1.2;
   const rise = 4.3 + 2.8 * smoothstep(0, 22, back);
   const tail = 1 - smoothstep(24, 40, back);
-  const front = 1 - smoothstep(0, 8, u);
-  // Right behind the facade the turf must clear the hoods across the whole front.
-  const clear = back < 3 && Math.abs(v) < hw + 0.5 ? 4.3 : 0;
-  return hole.y + Math.max(rise * across * tail, clear) * front;
+  const front = 1 - smoothstep(-0.5, 8, u);
+  // Right behind the facade the turf clears the hoods across the whole front, easing off smoothly.
+  const clear = 4.4 * (1 - smoothstep(hw - 0.5, hw + 4, Math.abs(v))) * (1 - smoothstep(2, 8, back));
+  return hole.y + smax(rise * across * tail, clear, 1.2) * front;
 }
 
-function holeCut(hole, dx, dz, h) {
+/** A hole's level yard (pass 0). Every yard is cut before any mound is raised. */
+function holeYard(hole, dx, dz, h) {
   const [u, v0] = holeLocal(hole, dx, dz);
-  const v = v0 - hole.center;
-  const hw = hole.width / 2;
-  if (hole.segSpans && u > -2 && u < 4) {
-    // Between Bag End's facade segments (and past its ends) the turf bulges forward, level with the
-    // hoods, and slopes down to the terrace.
+  if (u <= -0.6 || hole.arc) return h;
+  const v = v0 - hole.center, hw = hole.width / 2;
+  // Blend widths grow with how far the yard is cut into (or built out from) the hill, so the sides
+  // are grassy slopes rather than walls.
+  const spread = 1.2 + Math.abs(h - hole.y) * 1.9;
+  const lat = 1 - smoothstep(hw + 0.6, hw + Math.max(4, spread), Math.abs(v));
+  const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + Math.max(1.8, spread * 0.8), u);
+  return lerp(h, hole.y, lat * front);
+}
+
+/** A hole's turf mound (pass 1), and all of Bag End (last). Mounds only ever raise the ground. */
+function holeMound(hole, dx, dz, h) {
+  const [u, v0] = holeLocal(hole, dx, dz);
+  const v = v0 - hole.center, hw = hole.width / 2;
+  if (!hole.arc) {
+    if (u > -0.6) return h;
+    return smax(h, hole.y + moundTop(hole, v0, -u) + 0.2, 2.5);
+  }
+  // Bag End.
+  if (u > -0.6) {
+    // Yard: the terrace, then the garden slope down to the lane; it stops at the ends of the facade.
+    const lat = 1 - smoothstep(hw - 0.3, hw + 2.5, Math.abs(v));
+    const spread = 1.2 + Math.abs(h - hole.y) * 1.9;
+    const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + Math.max(1.8, spread * 0.8), u);
+    let target = hole.y;
+    if (u > hole.terrace) target = lerp(hole.y - 0.9, hole.laneY + 0.1, smoothstep(hole.terrace, hole.yard + 0.5, u));
+    const keepLane = Math.abs(v0) > 2.5 ? 1 - laneMask(hole.x + dx, hole.z + dz) : 1;
+    let yardH = lerp(h, target, lat * front * keepLane);
+    // Between the facade sections the turf rolls forward, level with the hoods, down to the terrace.
     let gap = Infinity;
     for (const [a, b] of hole.segSpans) gap = Math.min(gap, Math.max(a - v0, v0 - b, 0));
-    const first = hole.segSpans[0][0], last = hole.segSpans[hole.segSpans.length - 1][1];
-    if (gap > 0.02 && v0 > first - 4 && v0 < last + 4) {
-      const bulge = hole.y + Math.min(2.5 + gap * 2.2, 3.9) - Math.max(0, u + 0.3) * 1.1;
-      h = Math.max(bulge, hole.y);
-      if (u < 0.8) return h;
+    const inside = v0 > hole.segSpans[0][0] - 3 && v0 < hole.segSpans[hole.segSpans.length - 1][1] + 3;
+    if (inside) {
+      const bulge = hole.y + 3.9 * smoothstep(0.02, 1.4, gap) * (1 - smoothstep(-0.4, 2.6, u));
+      yardH = smax(yardH, bulge, 0.8);
     }
-  }
-  if (u > -0.6) {
-    let target0 = hole.y;
-    // Blend widths grow with how far the yard is cut into (or built out from) the hill, so the sides
-    // are grassy slopes rather than walls.
-    const spread = 1.2 + Math.abs(h - target0) * 1.9;
-    // Bag End's yard stops at the ends of its facade; beyond them the knoll slopes down (below).
-    const lat = hole.arc ? 1 - smoothstep(hw - 0.3, hw + 2.5, Math.abs(v)) : 1 - smoothstep(hw + 0.6, hw + Math.max(4, spread), Math.abs(v));
-    const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + Math.max(1.8, spread * 0.8), u);
-    let target = target0;
-    if (hole.terrace && u > hole.terrace) {
-      // Below the retaining wall the garden slopes down to the lane.
-      const t = smoothstep(hole.terrace, hole.yard + 0.5, u);
-      target = lerp(hole.y - 0.9, hole.laneY + 0.1, t);
-    }
-    // Bag End's grounds stop at the lanes around them (except at its own gate).
-    const keepLane = hole.arc && Math.abs(v0) > 2.5 ? 1 - laneMask(hole.x + dx, hole.z + dz) : 1;
-    const yardH = lerp(h, target, lat * front * keepLane);
-    if (!hole.arc) return yardH;
-    // Past the ends of Bag End's garden the knoll slopes down to the lane instead of ending in a wall.
+    // Past the ends of the garden the knoll rolls down to the lane.
     return smax(yardH, bagEndCover(hole, u, v, hw) * (1 - lat) + yardH * lat, 1.5);
   }
-  if (hole.arc) {
-    // Behind a curved facade the knoll carries the turf; just make sure it clears the facade.
-    // Behind the curved facade: one smooth dome under the knoll, easing into the hill.
-    // Behind the house the hill is eased into a gentle rise (the set's turf rolls back from the
-    // hoods rather than climbing steeply), then the rounded cover is laid over it.
-    const back = -u;
-    const gentle = hole.y + 4.3 + back * 0.2;
-    const k = (1 - smoothstep(16, 30, back)) * (1 - smoothstep(hw + 6, hw + 18, Math.abs(v)));
-    const eased = h > gentle ? lerp(h, gentle, k) : h;
-    return smax(eased, bagEndCover(hole, u, v, hw), 3.0);
-  }
-  const dome = hole.y + moundTop(hole, v0, -u) + 0.2;
-  return smax(h, dome, 2.5);
+  // Behind the house the hill eases into a gentle rise, with the rounded cover laid over it.
+  const back = -u;
+  const gentle = hole.y + 4.3 + back * 0.2;
+  const k = (1 - smoothstep(16, 30, back)) * (1 - smoothstep(hw + 6, hw + 18, Math.abs(v)));
+  const eased = h > gentle ? lerp(h, gentle, k) : h;
+  return smax(eased, bagEndCover(hole, u, v, hw), 3.0);
 }
 
 function makeHole(rand, x, z, fx, fz, y, yard, o) {
@@ -738,7 +740,8 @@ function nearestOnLanes(x, z, lanes) {
   {
     const tunnels = GEO.paths.filter((p) => p.tunnel);
     const lower = village.filter((l) => l.name === 'Bagshot Row');
-    // Two mapped doors (the tunnel entrances) and the third a door's width further along the row.
+    // The two walk-through interiors are mapped as footways winding through the hill; each starts at
+    // the front door on Bagshot Row's upper stretch. Sam's is the next door along the row.
     const doors = tunnels.map((t) => t.pts[0]).sort((a, b) => a[0] - b[0]);
     doors.push([2 * doors[1][0] - doors[0][0], 2 * doors[1][1] - doors[0][1]]);
     const opts = [
@@ -748,10 +751,20 @@ function nearestOnLanes(x, z, lanes) {
     ];
     doors.forEach(([dx, dz], i) => {
       const lane = nearestOnLanes(dx, dz, lower);
-      let fx = lane.x - dx, fz = lane.z - dz;
-      const l = Math.hypot(fx, fz) || 1; fx /= l; fz /= l;
-      const x = dx - fx * 0.5, z = dz - fz * 0.5;
-      HOLES.push(makeHole(rand, x, z, fx, fz, baseHeight(lane.x, lane.z) + 0.3, Math.max(3.5, l + 0.5 - lane.lane.width / 2 - 0.4), opts[i]));
+      // The row runs past the doors; each hole faces across it, out of the uphill bank.
+      const pts = lane.lane.pts;
+      let tx = 0, tz = 0, best = Infinity;
+      for (let k = 0; k < pts.length - 1; k++) {
+        const d = Math.hypot((pts[k][0] + pts[k + 1][0]) / 2 - dx, (pts[k][1] + pts[k + 1][1]) / 2 - dz);
+        if (d < best) { best = d; tx = pts[k + 1][0] - pts[k][0]; tz = pts[k + 1][1] - pts[k][1]; }
+      }
+      const tl = Math.hypot(tx, tz) || 1;
+      let fx = -tz / tl, fz = tx / tl;
+      if (naturalHeight(lane.x + fx * 8, lane.z + fz * 8) > naturalHeight(lane.x - fx * 8, lane.z - fz * 8)) { fx = -fx; fz = -fz; }
+      // Set the door back into the bank, with room for a front garden.
+      const hwLane = lane.lane.width / 2, into = hwLane + 4.8;
+      const x = lane.x - fx * into, z = lane.z - fz * into;
+      HOLES.push(makeHole(rand, x, z, fx, fz, baseHeight(lane.x, lane.z) + 0.3, into - hwLane - 0.4, opts[i]));
     });
   }
 
@@ -787,7 +800,8 @@ function nearestOnLanes(x, z, lanes) {
       if (Math.hypot(dx, dz) < 34 && dx * be.fx + dz * be.fz > -6) continue;
     }
     if (Math.abs(c.x) > 270 || Math.abs(c.z) > 270) continue;
-    if (lakeFactor(c.x, c.z) > 0 || lakeDist(c.x, c.z) < 8) continue;
+    if (lakeFactor(c.x, c.z) > 0 || lakeDist(c.x, c.z) < 8 || pondDist(c.x, c.z) < 9) continue;
+    if (pondDist(c.px, c.pz) < 4) continue;
     // Keep other lanes out of the mound behind and the yard in front, and the facade off the lane.
     const tx = -c.nz, tz = c.nx;
     const probes = [[0, 0], [3, 0], [6, 0], [2, 3.5], [2, -3.5], [-(c.off - c.hwLane - 1.5), 0], [-2, 3], [-2, -3]];
@@ -855,11 +869,15 @@ export function yardAt(x, z) {
 /** Final ground height. */
 export function heightAt(x, z) {
   let h = baseHeight(x, z);
+  const near = [];
   for (const hole of HOLES) {
     const dx = x - hole.x, dz = z - hole.z;
-    if (dx * dx + dz * dz > hole.reach2) continue;
-    h = holeCut(hole, dx, dz, h);
+    if (dx * dx + dz * dz <= hole.reach2) near.push(hole);
   }
+  if (!near.length) return h;
+  for (const hole of near) h = holeYard(hole, x - hole.x, z - hole.z, h);
+  for (const hole of near) if (!hole.arc) h = holeMound(hole, x - hole.x, z - hole.z, h);
+  for (const hole of near) if (hole.arc) h = holeMound(hole, x - hole.x, z - hole.z, h);
   return h;
 }
 

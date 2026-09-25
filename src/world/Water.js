@@ -45,7 +45,7 @@ export class Water {
     this.lake.material = this._material({ reflection: this.reflection, flow: null });
     this.group.add(this.lake);
 
-    this.pond = new THREE.Mesh(this._surface(POND_SDF, POND_Y), this._material({ reflection: null, flow: null }));
+    this.pond = new THREE.Mesh(this._surface(POND_SDF, POND_Y, 1, 1.5), this._material({ reflection: null, flow: null }));
     this.group.add(this.pond);
 
     const streamMat = this._material({ reflection: null, flow: 0.9 });
@@ -55,7 +55,7 @@ export class Water {
     for (const m of [this.lake, this.pond, ...this.streams]) m.layers.set(LAYERS.NO_REFLECT);
   }
 
-  _surface(sdf, y, cell = 2) {
+  _surface(sdf, y, cell = 2, reach = 6) {
     const pos = [], idx = [];
     const step = Math.round(cell / sdf.res);
     const cols = Math.floor((sdf.nx - 1) / step), rows = Math.floor((sdf.nz - 1) / step);
@@ -71,7 +71,7 @@ export class Water {
     for (let j = 0; j < rows; j++)
       for (let i = 0; i < cols; i++) {
         const d = sdf.d[(j * step + (step >> 1)) * sdf.nx + i * step + (step >> 1)];
-        if (d > 6) continue;
+        if (d > reach) continue;
         const a = vert(i, j), b = vert(i + 1, j), c = vert(i, j + 1), e = vert(i + 1, j + 1);
         idx.push(a, c, b, b, c, e);
       }
