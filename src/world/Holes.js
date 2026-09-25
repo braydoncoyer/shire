@@ -357,7 +357,9 @@ export class HobbitHoles {
         const x = pts[i][0] + nx * off, z = pts[i][1] + nz * off;
         if (Math.hypot(x - gatePt.x, z - gatePt.z) < gate + 0.1) { prev = null; continue; }
         // Stop where the fence would touch any path (a junction, or this lane after a bend).
-        if (walked > 2 && (laneMask(x, z) > 0.02 || laneMask(x + nx * 0.4, z + nz * 0.4) > 0.05)) break;
+        // (The fence runs along this lane's soft edge, so only test on the garden side of it: any path
+        // found there is another one joining.)
+        if (walked > 2 && laneMask(x + nx * 0.7, z + nz * 0.7) > 0.05) break;
         const y = heightAt(x, z);
         if (prev && Math.hypot(x - prev.x, z - prev.z) > 2) break;
         B.add('wood', box(0.05, 0.9, 0.05), mtx(x, y + 0.42, z, (rand() - 0.5) * 0.08, 0, (rand() - 0.5) * 0.08), WEATHERED);
