@@ -36,9 +36,21 @@ export class HobbitHoles {
     const hw = hole.width / 2, cx = hole.center;
     const yard = hole.yard;
 
-    // Facade.
-    const { lanterns } = buildFacade(B, hole, base.clone().multiply(new THREE.Matrix4().makeScale(sc, sc, sc)));
-    this.lanterns.push(...lanterns);
+    // Facade (Bag End's in segments set around the curve of its dome).
+    if (hole.segments) {
+      const R = hole.arc.R;
+      for (const seg of hole.segments) {
+        const a = seg.v / R;
+        // Rotate the door frame about the arc center (R behind the door).
+        const m = base.clone().multiply(new THREE.Matrix4().makeTranslation(0, 0, -R))
+          .multiply(new THREE.Matrix4().makeRotationY(a)).multiply(new THREE.Matrix4().makeTranslation(0, 0, R));
+        const { lanterns } = buildFacade(B, { ...hole, bays: seg.bays, seed: hole.seed + Math.round(seg.v * 10) }, m);
+        this.lanterns.push(...lanterns);
+      }
+    } else {
+      const { lanterns } = buildFacade(B, hole, base.clone().multiply(new THREE.Matrix4().makeScale(sc, sc, sc)));
+      this.lanterns.push(...lanterns);
+    }
 
     // Chimneys poking through the turf behind.
     const nCh = hole.width > 7 ? 2 : 1;
@@ -65,7 +77,8 @@ export class HobbitHoles {
     const fz = yard + 0.15;
     const style = hole.fence || (hole.bagEnd ? 'wattle' : ['wattle', 'rail', 'picket', 'rail'][Math.floor(rand() * 4)]);
     const gate = 0.7;
-    const x0 = cx - hw - 0.6, x1 = cx + hw + 0.6;
+    // Bag End's front is open: only a short stretch of fence either side of its gate.
+    const x0 = hole.segments ? -3.2 : cx - hw - 0.6, x1 = hole.segments ? 3.2 : cx + hw + 0.6;
     for (const [a, b] of [[x0, -gate], [gate, x1]]) {
       if (b - a < 0.3) continue;
       this._fence(B, at, style, a, b, fz, rand);
@@ -85,6 +98,19 @@ export class HobbitHoles {
     if (hole.bagEnd || rand() < 0.5) B.add('wood', cylinder(0.14, 0.14, 0.62, 10), at(lbx, 1.1, fz + 0.3, 0, 0, Math.PI / 2), 0x7a5a3c);
     else B.add('paint', box(0.3, 0.24, 0.4), at(lbx, 1.1, fz + 0.3), hole.doorColor);
     if (hole.bagEnd) B.add('plaster', box(0.75, 0.42, 0.03), at(gate + 0.2, 0.9, fz + 0.1), 0xece4cc);
+
+    // Bag End's garden: rows of lavender across the terrace in front of the study bay, and a pumpkin
+    // by the door.
+    if (hole.segments) {
+      for (let v = -14; v < -2; v += 0.9)
+        for (const u of [2.2, 3.1]) {
+          const a = v / hole.arc.R, R = hole.arc.R + u;
+          const px = hole.x - hole.fx * hole.arc.R + (hole.fx * Math.cos(a) + hole.fz * Math.sin(a)) * R;
+          const pz = hole.z - hole.fz * hole.arc.R + (hole.fz * Math.cos(a) - hole.fx * Math.sin(a)) * R;
+          this.shrubs.add('lavender', px, pz, 0.8 + rand() * 0.2, rand() * 6.28, hole.y);
+        }
+      B.add('paint', new THREE.SphereGeometry(0.42, 16, 12), at(1.6, 0.3, 1.2, 0.3, 0, 0.2, 1.35, 0.8, 1), 0xd8842a);
+    }
 
     // Planting: bushes at the facade ends, flowering shrubs in the beds, pots by the door.
     for (const e of [cx - hw - 0.5, cx + hw + 0.5]) {

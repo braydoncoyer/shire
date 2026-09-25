@@ -13,6 +13,7 @@ const KINDS = {
   roses: { shape: 'ellipsoid', r: [0.7, 0.8, 0.7], cards: 80, size: 0.45, tex: 'smallleaf', tint: 0x355e22, bloom: 0xd8402a, blooms: 35 },
   marigold: { shape: 'ellipsoid', r: [0.55, 0.4, 0.55], cards: 50, size: 0.35, tex: 'smallleaf', tint: 0x4a7a2a, bloom: 0xe8902a, blooms: 40 },
   yellow: { shape: 'ellipsoid', r: [0.7, 0.55, 0.7], cards: 60, size: 0.4, tex: 'smallleaf', tint: 0x4a7a2a, bloom: 0xf0cf30, blooms: 45 },
+  lavender: { shape: 'ellipsoid', r: [0.55, 0.45, 0.55], cards: 70, size: 0.35, tex: 'smallleaf', tint: 0x7d8f78, bloom: 0x9a7ac8, blooms: 60 },
   hedge: { shape: 'box', r: [1.6, 0.65, 0.5], cards: 170, size: 0.55, tex: 'smallleaf', tint: 0x355f22 },
 };
 

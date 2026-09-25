@@ -37,6 +37,8 @@ const [beX, beZ] = centroid(building('Bag End').poly);
 const [ptX, ptZ] = tree('The Party Tree');
 const [oakX, oakZ] = tree('Big Oak Tree');
 
+export const VILLAGE = { x: -16, z: -65, r: 150 };
+
 export const LANDMARKS = {
   bagEnd: { x: beX, z: beZ },
   bagEndOak: { x: oakX, z: oakZ },
@@ -175,7 +177,9 @@ function sampleGrid(grid, x, z, fallback) {
 
 // Lanes: every footway, path, track and service road in the data. Bridges are drawn separately;
 // the Bagshot Row walk-through tunnels are inside hobbit holes, so they aren't lanes.
-export const LANES = GEO.paths.filter((p) => !p.bridge && !p.tunnel);
+// Footways on the set are narrow compacted-clay tracks.
+const LANE_WIDTH = { footway: 2.0, path: 1.3, steps: 1.4, track: 2.8, service: 3.6 };
+export const LANES = GEO.paths.filter((p) => !p.bridge && !p.tunnel).map((p) => ({ ...p, width: LANE_WIDTH[p.kind] ?? p.width }));
 for (const lane of LANES) bakePolyline(lane.pts, lane.width, laneDist, laneWidth);
 
 /** 0..1 coverage of gravel lane at (x, z). */
@@ -459,6 +463,15 @@ export function moundTop(hole, v, d = 0) {
   return q > 0 ? (1.15 * hole.scale + hole.crown) * Math.sqrt(q) : 0;
 }
 export function holeLocal(hole, dx, dz) {
+  if (hole.arc) {
+    // Curved facade: polar coordinates around a center behind the door. u is meters in front of
+    // the facade line, v is arc length along it.
+    const R = hole.arc.R;
+    const px = dx + hole.fx * R, pz = dz + hole.fz * R;
+    const r = Math.hypot(px, pz) || 1e-6;
+    const a = Math.atan2(px * hole.fz - pz * hole.fx, px * hole.fx + pz * hole.fz);
+    return [r - R, a * R];
+  }
   return [dx * hole.fx + dz * hole.fz, dx * hole.fz - dz * hole.fx];
 }
 const smax = (a, b, k) => {
@@ -469,10 +482,24 @@ function holeCut(hole, dx, dz, h) {
   const [u, v0] = holeLocal(hole, dx, dz);
   const v = v0 - hole.center;
   const hw = hole.width / 2;
+  if (hole.segSpans && u > -0.6 && u < 2.5) {
+    // Between Bag End's facade segments the turf bulges forward and slopes down to the path.
+    let gap = Infinity;
+    for (const [a, b] of hole.segSpans) gap = Math.min(gap, Math.max(a - v0, v0 - b, 0));
+    if (gap > 0.05 && v0 > hole.segSpans[0][0] - 0.5 && v0 < hole.segSpans[hole.segSpans.length - 1][1] + 0.5) {
+      const bulge = hole.y + Math.min(gap * 2.2, 3.4) - Math.max(0, u + 0.6) * 1.4;
+      return Math.max(bulge, hole.y);
+    }
+  }
   if (u > -0.6) {
     const lat = 1 - smoothstep(hw + 0.6, hw + 4, Math.abs(v));
     const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + 1.8, u);
     return lerp(h, hole.y, lat * front);
+  }
+  if (hole.arc) {
+    // Behind a curved facade the knoll carries the turf; just make sure it clears the facade.
+    const cover = hole.y + 3.9 * (1 - smoothstep(4, 14, -u)) * (1 - smoothstep(hw + 1, hw + 5, Math.abs(v)));
+    return smax(h, cover, 1.0);
   }
   const dome = hole.y + moundTop(hole, v0, -u) + 0.2;
   return smax(h, dome, 1.2);
@@ -481,7 +508,7 @@ function holeCut(hole, dx, dz, h) {
 function makeHole(rand, x, z, fx, fz, y, yard, o) {
   const spec = holeSpec(rand, o);
   return {
-    ...spec, x, z, fx, fz, y, yard, color: spec.doorColor, bagEnd: !!o.bagEnd, name: o.name || '',
+    ...spec, x, z, fx, fz, y, yard, color: spec.doorColor, bagEnd: !!o.bagEnd, name: o.name || '', segments: o.segments,
     yaw: Math.atan2(fx, fz),
     veg: !o.bagEnd && rand() < 0.5,
     reach2: Math.max(yard + 3, spec.width / 2 + 4, 11) ** 2,
@@ -515,8 +542,27 @@ function nearestOnLanes(x, z, lanes) {
     HOLES.push(makeHole(rand, beX, beZ, fx, fz, laneY + 1.9, Math.max(3.2, l - 1.9), {
       bagEnd: true, name: 'Bag End', doorColor: 0x2f6b3a, knob: 'center', plaster: 0xd9ad4f, frame: 0x2f6b3a, arch: 'brick',
       windowStyle: 'grid', doorR: 1.02, lit: true, fence: 'wattle',
-      bays: [{ kind: 'window', w: 1.5 }, { kind: 'door', w: 2.9 }, { kind: 'window', w: 1.5 }, { kind: 'wall', w: 1.2 }, { kind: 'bigwindow', w: 1.9 }, { kind: 'wall', w: 1.0 }, { kind: 'bigwindow', w: 1.8 }],
+      // Segments of the facade set around the curve of the dome, left to right as seen from the
+      // lane: two small round windows, the arched study bay, a round window, then the door between
+      // two small windows, and a last round window. v = arc position of each segment's origin.
+      segments: [
+        { v: -12.6, bays: [{ kind: 'small', w: 0.95 }, { kind: 'small', w: 0.95 }] },
+        { v: -8.2, bays: [{ kind: 'wall', w: 0.7 }, { kind: 'bay', w: 2.5 }, { kind: 'wall', w: 0.7 }] },
+        { v: -4.6, bays: [{ kind: 'window', w: 1.35 }] },
+        { v: 0, bays: [{ kind: 'small', w: 1.05 }, { kind: 'door', w: 2.8 }, { kind: 'small', w: 1.05 }] },
+        { v: 4.1, bays: [{ kind: 'window', w: 1.4 }] },
+      ],
+      bays: [{ kind: 'small', w: 1.05 }, { kind: 'door', w: 2.8 }, { kind: 'small', w: 1.05 }],
     }));
+    const be = HOLES[0];
+    be.arc = { R: 13 };
+    be.segSpans = be.segments.map((seg) => {
+      const laid = layoutBays({ bays: seg.bays, doorR: 1.02 });
+      return [seg.v + laid[0].a, seg.v + laid[laid.length - 1].b];
+    });
+    be.width = 19; // arc span of the segments (−13.6 … +4.9)
+    be.center = -4.35;
+    be.reach2 = 30 * 30;
   }
 
   // Bagshot Row: the two walk-through interiors (mapped as tunnels) and Sam's yellow door between.

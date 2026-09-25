@@ -11,7 +11,7 @@ import {
 import { buildTree, leafTexture, SPECIES } from './TreeGen.js';
 import {
   heightAt, laneMask, streamMask, lakeFactor, lakeDist, pondDist, yardAt, LANDMARKS, STREAMS, WALK_RADIUS, MILL, BRIDGE,
-  GREEN_DRAGON, HOLES, GEO,
+  GREEN_DRAGON, HOLES, GEO, VILLAGE,
 } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 
@@ -112,6 +112,17 @@ export function planTrees() {
       const x = ox + (rand() - 0.5) * 30, z = oz + (rand() - 0.5) * 24;
       if (!blocked(x, z, 1.5) && clear(x, z, 5)) add('oak', x, z, 0.36 + rand() * 0.08, 3);
     }
+  }
+
+  // Trees through the village: small oaks and fruit trees on the banks between lanes, as in the
+  // films (the set is far more wooded than open pasture).
+  for (let k = 0, placed = 0; k < 4000 && placed < 70; k++) {
+    const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * VILLAGE.r;
+    const x = VILLAGE.x + Math.cos(a) * r, z = VILLAGE.z + Math.sin(a) * r;
+    if (fbm2(x / 40 + 9, z / 40 - 2, 2) < -0.05) continue;
+    if (blocked(x, z, 2.5) || !clear(x, z, 8)) continue;
+    add('oak', x, z, 0.4 + rand() * 0.35, rand() < 0.4 ? 3 : undefined);
+    placed++;
   }
 
   // Scattered oaks and clumps on the surrounding farmland, thinning toward the horizon; the village

@@ -117,8 +117,8 @@ export function makeTerrainMaterial(groundNoise, laneTex, waterTex) {
   const wp = positionWorld.xz;
 
   const lush = color(0x3f7a1a), bright = color(0x6c9e2a), deep = color(0x2a5212);
-  const dry = color(0x8c9343), soil = color(0x5e4a33), gravel = color(0xa89a7e);
-  const gravelDark = color(0x7d6c55), mud = color(0x4a4030);
+  const dry = color(0x8c9343), soil = color(0x5e4a33), gravel = color(0x9c8664);
+  const gravelDark = color(0x6e5a40), mud = color(0x4a4030);
 
   const shading = Fn(() => {
     const n1 = texture(groundNoise, wp.div(210));

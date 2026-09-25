@@ -3,8 +3,8 @@
 
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box } from './Kit.js';
-import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES } from './Layout.js';
-import { mulberry32 } from '../util/noise.js';
+import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES, LANES, VILLAGE } from './Layout.js';
+import { mulberry32, fbm2 } from '../util/noise.js';
 
 const WEATHERED = 0x7d6e5a, POST = 0x6a5a48;
 
@@ -40,6 +40,33 @@ export class Boundaries {
         shrubs.add('hedge', x, z, 0.9 + rand() * 0.2, Math.atan2(-dz, dx) + (rand() - 0.5) * 0.1);
       });
     }
+
+    // The village's dense planting: bushes and clipped hedges lining the lanes in runs, and clumps
+    // of shrubs on the banks between them.
+    const free = (x, z) => yardAt(x, z) === 0 && laneMask(x, z) < 0.05 && lakeFactor(x, z) === 0 && !nearHole(x, z);
+    for (const lane of LANES) {
+      if (!['footway', 'path', 'steps'].includes(lane.kind)) continue;
+      const off = lane.width / 2 + 1.1;
+      walk(lane.pts, 1.6, (x, z, dx, dz) => {
+        if (Math.hypot(x - VILLAGE.x, z - VILLAGE.z) > VILLAGE.r) return;
+        for (const s of [-1, 1]) {
+          const px = x - dz * s * off, pz = z + dx * s * off;
+          const run = fbm2(px / 18 + s * 7, pz / 18, 2);
+          if (run < 0.08 || !free(px, pz)) continue;
+          const kind = run > 0.3 ? 'hedge' : rand() < 0.5 ? 'bush' : 'broad';
+          shrubs.add(kind, px, pz, 0.7 + rand() * 0.35, Math.atan2(-dz, dx) + (rand() - 0.5) * 0.2);
+        }
+      });
+    }
+    for (let z = VILLAGE.z - VILLAGE.r; z < VILLAGE.z + VILLAGE.r; z += 3.2)
+      for (let x = VILLAGE.x - VILLAGE.r; x < VILLAGE.x + VILLAGE.r; x += 3.2) {
+        const px = x + (rand() - 0.5) * 2.5, pz = z + (rand() - 0.5) * 2.5;
+        if (Math.hypot(px - VILLAGE.x, pz - VILLAGE.z) > VILLAGE.r) continue;
+        const n = fbm2(px / 25 - 3, pz / 25 + 5, 3);
+        if (n < 0.22 || !free(px, pz)) continue;
+        const kinds = ['bush', 'broad', 'bush', 'hydrangea', 'yellow'];
+        shrubs.add(kinds[Math.floor(rand() * kinds.length)], px, pz, 0.7 + rand() * 0.6);
+      }
 
     // Fences: posts every 2.4 m with two rails following the ground.
     const B = new Builder();

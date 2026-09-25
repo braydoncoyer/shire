@@ -88,9 +88,20 @@ export function buildFacade(B, spec, base) {
       const hole = new THREE.Path();
       hole.absarc(0, doorR + 0.02, doorR + 0.02, 0, Math.PI * 2, true);
       shape.holes.push(hole);
-    } else if (b.kind === 'window' || b.kind === 'bigwindow') {
-      const r = b.kind === 'bigwindow' ? Math.min(0.62, b.h - 0.3) : Math.min(0.36, b.h - 0.28);
-      b.win = { x: b.c, y: b.kind === 'bigwindow' ? 1.25 : 1.2, r };
+    } else if (b.kind === 'bay') {
+      // Tall arched window with timber tracery (like Bag End's study bay).
+      const r = Math.min(0.62, b.h - 0.3), y0 = 0.55, y1 = 1.55;
+      b.arched = { x: b.c, r, y0, y1 };
+      const hole = new THREE.Path();
+      hole.moveTo(b.c + r, y0);
+      hole.lineTo(b.c + r, y1);
+      hole.absarc(b.c, y1, r, 0, Math.PI, false);
+      hole.lineTo(b.c - r, y0);
+      hole.closePath();
+      shape.holes.push(hole);
+    } else if (b.kind === 'window' || b.kind === 'bigwindow' || b.kind === 'small') {
+      const r = b.kind === 'bigwindow' ? Math.min(0.62, b.h - 0.3) : b.kind === 'small' ? Math.min(0.26, b.h - 0.25) : Math.min(0.36, b.h - 0.28);
+      b.win = { x: b.c, y: b.kind === 'bigwindow' ? 1.25 : b.kind === 'small' ? 1.05 : 1.2, r };
       const hole = new THREE.Path();
       hole.absarc(b.win.x, b.win.y, r + 0.01, 0, Math.PI * 2, true);
       shape.holes.push(hole);
@@ -100,18 +111,37 @@ export function buildFacade(B, spec, base) {
     add('plaster', g, at(0, 0, 0), spec.plaster);
   }
 
+  const hasDoor = bays.some((b) => b.kind === 'door');
+  let hs = 1;
+  if (hasDoor) {
   // Door: planked, painted, recessed within a timber ring and a brick arch.
   add('paint', cylinder(doorR, doorR, 0.08, 36).rotateX(Math.PI / 2), at(0, doorR + 0.02, -0.18), spec.doorColor);
   add('wood', new THREE.TorusGeometry(doorR + 0.02, 0.07, 6, 36), at(0, doorR + 0.02, -0.08), TIMBER);
   const kx = spec.knob === 'center' ? 0 : spec.knob === 'left' ? -doorR * 0.62 : doorR * 0.62;
   add('metal', new THREE.SphereGeometry(0.07, 12, 8), at(kx, doorR + 0.02, -0.1), 0xc9a24a);
   // Iron strap hinges on the side away from the knob.
-  const hs = kx > 0.01 ? -1 : 1;
+  hs = kx > 0.01 ? -1 : 1;
   for (const y of [0.45, 1.45].map((t) => t * doorR))
     add('metal', box(doorR * 0.9, 0.05, 0.02), at(hs * doorR * 0.45, y + 0.02, -0.13), 0x2a2622);
   if (arch !== 'none') brickRing(add, at, 0, doorR + 0.02, doorR + 0.09, rand, archMat, archPal);
   // Threshold stone.
   add('stone', box(doorR * 2, 0.14, 0.5), at(0, 0.0, 0.2), 0xa39c8e);
+  }
+
+  // Arched bay windows: glass, a mullion grid, a timber arch and a sill.
+  for (const b of bays) {
+    if (!b.arched) continue;
+    const { x, r, y0, y1 } = b.arched;
+    add('glass', box(r * 2, y1 - y0, 0.03), at(x, (y0 + y1) / 2, -0.14), spec.lit ? 0xff0000 : 0x000000);
+    add('glass', new THREE.CircleGeometry(r, 18, 0, Math.PI), at(x, y1, -0.13), spec.lit ? 0xff0000 : 0x000000);
+    add('wood', new THREE.TorusGeometry(r + 0.04, 0.07, 6, 18, Math.PI), at(x, y1, -0.04), TIMBER);
+    for (const s of [-1, 1]) add('wood', box(0.1, y1 - y0, 0.1), at(x + s * (r + 0.04), (y0 + y1) / 2, -0.04), TIMBER);
+    for (const t of [-0.5, 0, 0.5]) add('paint', box(0.035, y1 - y0 + r * Math.sqrt(1 - t * t), 0.03), at(x + t * r, (y0 + y1 + r * Math.sqrt(1 - t * t)) / 2, -0.11), spec.frame);
+    for (const yy of [y0 + (y1 - y0) / 3, y0 + (2 * (y1 - y0)) / 3, y1]) add('paint', box(r * 2, 0.035, 0.03), at(x, yy, -0.11), spec.frame);
+    add('wood', box(r * 2 + 0.3, 0.09, 0.3), at(x, y0 - 0.05, 0.1), TIMBER);
+    // A central king post rising to the arch crown, like the set's timber tracery.
+    add('wood', box(0.12, b.spring + b.rise - y1 - r, 0.1), at(x, (y1 + r + b.spring + b.rise) / 2, 0.02), TIMBER);
+  }
 
   // Windows.
   for (const b of bays) {
@@ -149,6 +179,7 @@ export function buildFacade(B, spec, base) {
 
   // Lantern on the post beside the door (away from the knob side).
   const lv = bays.find((b) => b.kind === 'door');
+  if (!lv) return { lanterns, bays };
   const lx = hs > 0 ? lv.b : lv.a;
   add('metal', box(0.03, 0.03, 0.35), at(lx, lv.spring - 0.2, 0.28), 0x2a2622);
   add('metal', box(0.17, 0.24, 0.17), at(lx, lv.spring - 0.38, 0.42), 0x2a2622);
