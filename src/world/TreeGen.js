@@ -31,6 +31,19 @@ export const SPECIES = {
     leaves: { perTip: 7, size: 2.1, spread: 1.0, texture: 'needles', aspect: 0.75 },
     color: 0x3c5a2c,
   },
+  // The Party Tree: a huge old radiata pine (~25 m) with a stout trunk, heavy grey limbs rising
+  // and spreading from low down, and an open, domed crown of dark needle clumps.
+  partyPine: {
+    trunk: { length: 3.4, radius: 1.2, wobble: 0.05 },
+    levels: [
+      { children: 12, start: 0.25, angle: 49, lenFactor: 1, radFactor: 0.48, wobble: 0.1, up: 0.075, droop: 0.012, segLen: 1.6, spread: 1 },
+      { children: 7, start: 0.25, angle: 48, lenFactor: 0.4, radFactor: 0.5, wobble: 0.2, up: 0.05, droop: 0.03, segLen: 1.0, spread: 1 },
+      { children: 4, start: 0.35, angle: 40, lenFactor: 0.5, radFactor: 0.55, wobble: 0.25, up: 0.1, droop: 0.02, segLen: 0.7, spread: 1 },
+    ],
+    firstLength: 17.5,
+    leaves: { perTip: 7, size: 2.4, spread: 1.2, texture: 'needles', aspect: 0.75 },
+    color: 0x566f42,
+  },
   poplar: {
     trunk: { length: 17, radius: 0.32, wobble: 0.03 },
     levels: [

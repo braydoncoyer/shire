@@ -3,7 +3,7 @@
 
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box } from './Kit.js';
-import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES, LANES, VILLAGE, LANE_STAIRS } from './Layout.js';
+import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES, LANES, VILLAGE, LANE_STAIRS, LANDMARKS } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 
 const WEATHERED = 0x7d6e5a, POST = 0x6a5a48;
@@ -52,8 +52,8 @@ export class Boundaries {
         for (const s of [-1, 1]) {
           const px = x - dz * s * off, pz = z + dx * s * off;
           const run = fbm2(px / 18 + s * 7, pz / 18, 2);
-          if (run < 0.08 || !free(px, pz)) continue;
-          const kind = run > 0.3 ? 'hedge' : rand() < 0.5 ? 'bush' : 'broad';
+          if (run < 0.14 || !free(px, pz)) continue;
+          const kind = run > 0.38 ? 'hedge' : rand() < 0.5 ? 'bush' : 'broad';
           shrubs.add(kind, px, pz, 0.7 + rand() * 0.35, Math.atan2(-dz, dx) + (rand() - 0.5) * 0.2);
         }
       });
@@ -63,13 +63,33 @@ export class Boundaries {
         const px = x + (rand() - 0.5) * 2.5, pz = z + (rand() - 0.5) * 2.5;
         if (Math.hypot(px - VILLAGE.x, pz - VILLAGE.z) > VILLAGE.r) continue;
         const n = fbm2(px / 25 - 3, pz / 25 + 5, 3);
-        if (n < 0.22 || !free(px, pz)) continue;
+        if (n < 0.34 || !free(px, pz)) continue;
         const kinds = ['bush', 'broad', 'bush', 'hydrangea', 'yellow'];
         shrubs.add(kinds[Math.floor(rand() * kinds.length)], px, pz, 0.7 + rand() * 0.6);
       }
 
-    // Fences: posts every 2.4 m with two rails following the ground.
     const B = new Builder();
+    // The Party Tree's rope fence: a ring of short timber posts with a sagging rope between them.
+    {
+      const pt = LANDMARKS.partyTree, R = 13, n = 26;
+      const pts = [];
+      for (let k = 0; k <= n; k++) {
+        const a = (k / n) * Math.PI * 2, x = pt.x + Math.cos(a) * R, z = pt.z + Math.sin(a) * R;
+        pts.push({ x, z, y: heightAt(x, z) });
+      }
+      for (let k = 0; k < n; k++) {
+        const p = pts[k], q = pts[k + 1];
+        B.add('wood', box(0.1, 0.75, 0.1), mtx(p.x, p.y + 0.3, p.z, 0, rand() * 3, 0), POST);
+        const len = Math.hypot(q.x - p.x, q.z - p.z), yaw = Math.atan2(-(q.z - p.z), q.x - p.x);
+        for (let s = 0; s < 4; s++) {
+          const t0 = s / 4, t1 = (s + 1) / 4, sag = (t) => 0.12 * Math.sin(Math.PI * t);
+          const y0 = p.y + 0.6 - sag(t0) + (q.y - p.y) * t0, y1 = p.y + 0.6 - sag(t1) + (q.y - p.y) * t1;
+          B.add('wood', box(len / 4 + 0.02, 0.025, 0.025), mtx(p.x + (q.x - p.x) * (t0 + t1) / 2, (y0 + y1) / 2, p.z + (q.z - p.z) * (t0 + t1) / 2, 0, yaw, Math.atan2(y1 - y0, len / 4)), 0xc8b894);
+        }
+      }
+    }
+
+    // Fences: posts every 2.4 m with two rails following the ground.
     for (const line of GEO.fences) {
       let prev = null;
       walk(line, 2.4, (x, z) => {

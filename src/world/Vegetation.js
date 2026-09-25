@@ -15,7 +15,7 @@ import {
 } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
 
-const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1 };
+const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1, partyPine: 1 };
 
 /** Places that must stay clear of trees: lanes, water, gardens, buildings, the Party Field. */
 function blocked(x, z, pad = 0) {
@@ -34,6 +34,7 @@ function blocked(x, z, pad = 0) {
   if (Math.hypot(x - MILL.x, z - MILL.z) < 12) return true;
   if (Math.hypot(x - BRIDGE.x, z - BRIDGE.z) < 30) return true;
   if (Math.hypot(x - LANDMARKS.spawn.x, z - LANDMARKS.spawn.z) < 10) return true;
+  if (Math.hypot(x - LANDMARKS.partyTree.x, z - LANDMARKS.partyTree.z) < 30) return true;
   return false;
 }
 
@@ -55,7 +56,7 @@ export function planTrees() {
 
   // Landmarks: the Party Tree (a pine) and the oak above Bag End.
   const pt = LANDMARKS.partyTree, bo = LANDMARKS.bagEndOak;
-  add('pine', pt.x, pt.z, 2.0, 0);
+  add('partyPine', pt.x, pt.z, 1.3, 0);
   add('oak', bo.x, bo.z, 1.3, 1);
 
   // Every other tree mapped individually.
@@ -78,7 +79,7 @@ export function planTrees() {
     for (const s of [1, -1]) {
       const x = ax + nx * s * (3.5 + rand() * 3), z = az + nz * s * (3.5 + rand() * 3);
       if (lakeDist(x, z) < 1.5 || lakeDist(x, z) > 9) continue;
-      if (!blocked(x, z, 1.5) && clear(x, z, 9) && rand() < 0.75) add('willow', x, z, 0.9 + rand() * 0.35);
+      if (!blocked(x, z, 1.5) && clear(x, z, 14) && rand() < 0.5) add('willow', x, z, 0.9 + rand() * 0.35);
       break;
     }
   }
@@ -114,32 +115,43 @@ export function planTrees() {
     }
   }
 
-  // Trees through the village: small oaks and fruit trees on the banks between lanes, as in the
-  // films (the set is far more wooded than open pasture).
-  for (let k = 0, placed = 0; k < 4000 && placed < 70; k++) {
+  // A few specimen trees through the village (the set is mostly open lawn): single oaks and fruit
+  // trees on the banks, and old pines along the skyline behind the Hill.
+  for (let k = 0, placed = 0; k < 4000 && placed < 12; k++) {
     const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * VILLAGE.r;
     const x = VILLAGE.x + Math.cos(a) * r, z = VILLAGE.z + Math.sin(a) * r;
-    if (fbm2(x / 40 + 9, z / 40 - 2, 2) < -0.05) continue;
-    if (blocked(x, z, 2.5) || !clear(x, z, 8)) continue;
-    add('oak', x, z, 0.4 + rand() * 0.35, rand() < 0.4 ? 3 : undefined);
+    if (blocked(x, z, 3) || !clear(x, z, 28)) continue;
+    add('oak', x, z, 0.55 + rand() * 0.4, rand() < 0.35 ? 3 : undefined);
+    placed++;
+  }
+  for (let k = 0, placed = 0; k < 2000 && placed < 5; k++) {
+    // Behind (west and north-west of) Bag End, on the high ground.
+    const a = Math.PI + (rand() - 0.5) * 1.6, r = 45 + rand() * 60;
+    const x = LANDMARKS.bagEnd.x + Math.cos(a) * r, z = LANDMARKS.bagEnd.z + Math.sin(a) * r;
+    if (blocked(x, z, 3) || !clear(x, z, 30)) continue;
+    add('pine', x, z, 0.9 + rand() * 0.35, 0);
     placed++;
   }
 
   // Scattered oaks and clumps on the surrounding farmland, thinning toward the horizon; the village
   // itself (within ~150 m of the lanes' center) stays open pasture as on the set.
   let tries = 0;
-  while (trees.length < 380 && tries++ < 30000) {
-    const r = 150 + Math.pow(rand(), 1.3) * 1100;
+  // Mostly lone trees standing in the paddocks, with the occasional small clump.
+  const start = trees.length;
+  while (trees.length < start + 150 && tries++ < 30000) {
+    const r = 170 + Math.pow(rand(), 1.1) * 1200;
     const a = rand() * Math.PI * 2;
     const x = Math.cos(a) * r - 10, z = Math.sin(a) * r - 40;
     const clump = fbm2(x / 160 + 5, z / 160 - 3, 3);
-    if (clump < 0.15 + rand() * 0.25) continue;
-    if (blocked(x, z, 5) || !clear(x, z, 9)) continue;
-    add('oak', x, z, 0.8 + rand() * 0.45);
+    const single = rand() < 0.35;
+    if (!single && clump < 0.3 + rand() * 0.2) continue;
+    if (blocked(x, z, 5) || !clear(x, z, single ? 40 : 11)) continue;
+    if (rand() < 0.15) add('pine', x, z, 0.8 + rand() * 0.4, 0);
+    else add('oak', x, z, 0.85 + rand() * 0.5);
   }
 
   // Farm shelterbelts of poplars, well away from the set.
-  for (let b = 0; b < 8; b++) {
+  for (let b = 0; b < 4; b++) {
     const r = 400 + rand() * 500, a = rand() * Math.PI * 2;
     const x0 = Math.cos(a) * r, z0 = Math.sin(a) * r;
     const dir = a + Math.PI / 2 + (rand() - 0.5) * 0.8;

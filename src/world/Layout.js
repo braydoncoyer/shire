@@ -826,7 +826,7 @@ function nearestOnLanes(x, z, lanes) {
 }
 
 // The lawns around the Green Dragon and the Mill are kept short, like the hobbits' yards.
-for (const [cx, cz, r] of [[GREEN_DRAGON.x, GREEN_DRAGON.z, 34], [MILL.x, MILL.z, 16]]) {
+for (const [cx, cz, r] of [[GREEN_DRAGON.x, GREEN_DRAGON.z, 34], [MILL.x, MILL.z, 16], [ptX, ptZ, 34]]) {
   const i0 = Math.max(0, Math.floor((cx - r + INNER_HALF) / RES)), i1 = Math.min(N - 1, Math.ceil((cx + r + INNER_HALF) / RES));
   const j0 = Math.max(0, Math.floor((cz - r + INNER_HALF) / RES)), j1 = Math.min(N - 1, Math.ceil((cz + r + INNER_HALF) / RES));
   for (let j = j0; j <= j1; j++)
