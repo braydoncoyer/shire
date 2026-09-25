@@ -22,6 +22,7 @@ const views = [
   pose('ref_steps', P(-3.5, 8), P(0.5, 0), 0.9, 0.18), // like be_10: from the steps, up at the door
   pose('ref_below', P(-5, 45), P(-5, 0), 1.7, 0.12), // like be_12: from the slope below
   pose('ref_study', P(-8.2, 3.6), P(-8.2, 0), 1.6, 0.12), // like be_2: the arched study window
+  pose('ref_out', P(0, -0.3), P(0.6, 30), 1.35, -0.12), // from the doorway, looking out
 ];
 const args = views.flatMap(([n, q]) => [n, `time=${t}&${q}`]);
 execFileSync('node', ['scripts/shot.mjs', ...args], { stdio: 'inherit' });

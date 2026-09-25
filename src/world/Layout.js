@@ -77,7 +77,7 @@ function demWeight(g, x, z, margin) {
 }
 // The 8 m survey smooths the set's hand-sculpted banks into a gentle slope; on site (and on film)
 // the Hill reads much steeper. Relief above the lake is exaggerated to match photographs.
-const RELIEF = 1.4;
+const RELIEF = 1.1;
 let GD_BANK = null; // set once the Green Dragon is placed
 
 function rawDEM(x, z) {
@@ -122,8 +122,9 @@ function sculpt(x, z, h) {
     h += 17 * smoothstep(5, 30, dp) * smoothstep(-6, 8, back) * (1 - smoothstep(40, 80, Math.abs(side)));
   }
   // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
-  const kd = Math.hypot(x - oakX, z - oakZ);
-  h += 10.5 * Math.exp(-((kd / 21) ** 2.1));
+  // Centered a few meters behind the oak (away from Bag End), so the house sits on its flank.
+  const kd = Math.hypot(x - (oakX + (oakX - beX) * 0.35), z - (oakZ + (oakZ - beZ) * 0.35));
+  h += 8.5 * Math.exp(-((kd / 15) ** 2.1));
   return h;
 }
 
@@ -653,14 +654,18 @@ function nearestOnLanes(x, z, lanes) {
 
   // Bag End: at its mapped spot, facing east-south-east onto Bagshot Row, raised above its gate.
   {
-    const lane = nearestOnLanes(beX, beZ, village.filter((l) => l.name === 'Bagshot Row'));
-    let fx = lane.x - beX, fz = lane.z - beZ;
-    const l = Math.hypot(fx, fz); fx /= l; fz /= l;
+    // Bag End looks out east-south-east, straight down to the Party Tree (as surveyed); its garden
+    // runs down that way until it meets Bagshot Row.
+    let fx = ptX - beX, fz = ptZ - beZ;
+    { const n = Math.hypot(fx, fz); fx /= n; fz /= n; }
+    let l = 6;
+    while (l < 22 && laneMask(beX + fx * l, beZ + fz * l) < 0.5) l += 0.25;
+    const lane = { x: beX + fx * l, z: beZ + fz * l };
     const laneY = baseHeight(lane.x, lane.z);
     // The mapped point is the building; the front door sits 7 m further into the knoll, leaving room
     // for the garden terrace, the retaining wall and the steps down to the gate.
     const back = 7;
-    HOLES.push(makeHole(rand, beX - fx * back, beZ - fz * back, fx, fz, laneY + 2.5, l + back - 1.3, {
+    HOLES.push(makeHole(rand, beX - fx * back, beZ - fz * back, fx, fz, laneY + 0.6, l + back - 1.3, {
       bagEnd: true, name: 'Bag End', doorColor: 0x2b7352, knob: 'center', plaster: 0xe0b656, frame: 0x2f6b3a, arch: 'brick',
       windowStyle: 'grid', doorR: 1.02, lit: true, fence: 'wattle',
       // Segments of the facade set around the curve of the dome, left to right as seen from the
@@ -762,6 +767,9 @@ function nearestOnLanes(x, z, lanes) {
       const a = [hole.x + hole.fx * (hole.terrace + 0.2) + hole.fz * 0.2, hole.z + hole.fz * (hole.terrace + 0.2) - hole.fx * 0.2];
       const b = [hole.x + hole.fx * (hole.yard + 0.4) + hole.fz * 0.2, hole.z + hole.fz * (hole.yard + 0.4) - hole.fx * 0.2];
       bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, hole.laneY + 0.1], laneHeight, 1);
+      // A gravel strip under the flagstones from the door to the top of the steps.
+      const d0 = [hole.x + hole.fx * 0.6, hole.z + hole.fz * 0.6];
+      bakePolyline([d0, a], 2.3, laneDist, laneWidth, [hole.y + 0.05, hole.y + 0.05], laneHeight, 1);
       continue;
     }
     const a = [hole.x + hole.fx * 1.3, hole.z + hole.fz * 1.3];

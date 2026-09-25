@@ -384,7 +384,7 @@ export class Sky {
       const odR = V3(RAYLEIGH_SCATTER).mul(dist.mul(0.001));
       // Low haze layer: exponential in height, integrated analytically along the ray.
       const H = float(120);
-      const sigma0 = float(1.2e-5).add(u.haze.mul(u.haze).mul(5.0e-3));
+      const sigma0 = float(1.2e-5).add(u.haze.mul(u.haze).mul(1.4e-3));
       const k = d.y.mul(dist).div(H);
       const integ = select(abs(k).greaterThan(1e-3), float(1).sub(exp(k.negate())).div(k), float(1));
       const odH = sigma0.mul(exp(max(cameraPosition.y, 0).negate().div(H))).mul(dist).mul(integ);

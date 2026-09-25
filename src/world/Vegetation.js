@@ -55,7 +55,7 @@ export function planTrees() {
 
   // Landmarks: the Party Tree (a pine) and the oak above Bag End.
   const pt = LANDMARKS.partyTree, bo = LANDMARKS.bagEndOak;
-  add('pine', pt.x, pt.z, 1.25, 0);
+  add('pine', pt.x, pt.z, 2.0, 0);
   add('oak', bo.x, bo.z, 1.3, 1);
 
   // Every other tree mapped individually.

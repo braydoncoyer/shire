@@ -90,7 +90,7 @@ export class HobbitHoles {
     // Flagstone path from the gate to the door.
     for (let z = 0.5 * sc; z < yard + 0.2; z += 0.55 + rand() * 0.15) {
       const w = 0.55 + rand() * 0.35, d = 0.38 + rand() * 0.14;
-      if (hole.terrace && z > hole.terrace - 0.2) continue; // steps there instead
+      if (hole.arc) break; // Bag End has its own crazy paving and steps
       const x = (rand() - 0.5) * 0.25;
       B.add('rock', box(w, 0.08, d), atG(x, 0.02, z, 0, (rand() - 0.5) * 0.4), FLAG[Math.floor(rand() * FLAG.length)]);
     }
@@ -213,11 +213,28 @@ export class HobbitHoles {
         x += w;
       }
     }
-    // Big irregular flagstones on the terrace: the path to the door, spreading right to the bench.
-    for (let k = 0; k < 42; k++) {
-      const u = 0.5 + rand() * (T - 0.7), x = -0.8 + rand() * 4.6 * (u > 1.6 ? 1 : 0.4);
-      const w = 0.45 + rand() * 0.45, d = 0.35 + rand() * 0.3;
-      B.add('rock', box(w, 0.06, d), at(x, 0.0, u, 0, rand() * 3), FLAG[Math.floor(rand() * FLAG.length)]);
+    // Crazy paving: small irregular flagstones set in gravel, from the door to the steps and
+    // spreading right toward the bench.
+    const FLAGS = [0x8f8676, 0x7f786a, 0x9b9282, 0x756e61, 0x877f70];
+    const flag = (r) => {
+      const n = 5 + Math.floor(rand() * 3), pts = [];
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + (rand() - 0.5) * 0.6, rr = r * (0.7 + rand() * 0.45);
+        pts.push(new THREE.Vector2(Math.cos(a) * rr, Math.sin(a) * rr));
+      }
+      return new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: 0.05, bevelEnabled: false }).rotateX(-Math.PI / 2);
+    };
+    for (let u = 0.45; u < T + 0.1; u += 0.32)
+      for (let x = -1.05; x < (u > 1.4 && u < 3.4 ? 3.9 : 1.1); x += 0.34) {
+        if (rand() < 0.22) continue;
+        const px = x + (rand() - 0.5) * 0.14, pu = u + (rand() - 0.5) * 0.14;
+        B.add('rock', flag(0.13 + rand() * 0.07), at(px, -0.01, pu, 0, rand() * 6.28, 0), FLAGS[Math.floor(rand() * FLAGS.length)]);
+      }
+    // Planter boxes and pots by the door.
+    for (const [x, u, r] of [[-1.9, 1.1, 0.3], [2.3, 0.9, -0.2]]) {
+      B.add('wood', box(1.1, 0.4, 0.45), at(x, 0.2, u, 0, r), 0x7a5a3c);
+      const p = new THREE.Vector3(x, 0, u).applyMatrix4(at(0, 0, 0));
+      shrubs.add(rand() < 0.5 ? 'marigold' : 'roses', p.x, p.z, 0.55, rand() * 6.28, hole.y + 0.35);
     }
 
     // The dry-stone retaining wall along the terrace edge, broken by the steps.
@@ -232,8 +249,16 @@ export class HobbitHoles {
         const w = 0.4 + rand() * 0.45, h = 0.13 + rand() * 0.08;
         const tint = [0x7a7362, 0x8a806c, 0x6a6556, 0x958b76, 0x5f5a4c][Math.floor(rand() * 5)];
         const q = arcW(v + (rand() - 0.5) * 0.25, T + 0.25 + (rand() - 0.5) * 0.06);
-        B.add('rock', box(w, h, 0.36), mtx(q.x, y + h / 2, q.z, (rand() - 0.5) * 0.05, q.yaw + (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.08), tint);
+        const g = new THREE.IcosahedronGeometry(0.5, 0);
+        B.add('rock', g, mtx(q.x, y + h / 2, q.z, (rand() - 0.5) * 0.2, q.yaw + (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.2, w, h * 1.3, 0.4), tint);
       }
+    }
+
+    // Cottage flowers spilling along the top of the wall.
+    for (let v = -12.5; v < 8.5; v += 1.0) {
+      if (Math.abs(v - 0.2) < 1.3) continue;
+      const p = arcW(v, T - 0.35 + (rand() - 0.5) * 0.3);
+      shrubs.add(['roses', 'marigold', 'yellow', 'hydrangea', 'lavender'][Math.floor(rand() * 5)], p.x, p.z, 0.6 + rand() * 0.3, rand() * 6.28, hole.y);
     }
 
     // Lavender along the terrace in front of the study; herbs and cottage flowers by the door.
@@ -270,8 +295,8 @@ export class HobbitHoles {
     for (const s of [-1, 1]) B.add('wood', box(1.1, 0.25, 0.05), at(wx, 0.52, wz + s * 0.35, 0, wr, -0.12), 0x6e5238);
     for (const s of [-1, 1]) B.add('wood', box(1.0, 0.05, 0.05), at(wx - 0.9 * Math.cos(wr), 0.45, wz + 0.9 * Math.sin(wr) + s * 0.28, 0, wr, 0.25), 0x5c4330);
     B.add('wood', new THREE.TorusGeometry(0.22, 0.05, 6, 16), at(wx + 0.6 * Math.cos(wr), 0.23, wz - 0.6 * Math.sin(wr), 0, wr + Math.PI / 2, 0), 0x4a3526);
-    B.add('paint', new THREE.SphereGeometry(0.5, 20, 14), at(wx, 0.82, wz, 0, 0, 0.1, 1.25, 0.72, 1.05), 0xe08a2e);
-    B.add('wood', cylinder(0.05, 0.07, 0.22, 6), at(wx - 0.1, 1.22, wz, 0.3, 0, 0.3), 0x6a6a3a);
+    B.add('paint', new THREE.SphereGeometry(0.36, 20, 14), at(wx, 0.72, wz, 0, 0, 0.1, 1.25, 0.75, 1.05), 0xe08a2e);
+    B.add('wood', cylinder(0.04, 0.05, 0.16, 6), at(wx - 0.08, 1.0, wz, 0.3, 0, 0.3), 0x6a6a3a);
     const wc = new THREE.Vector3(wx, 0, wz).applyMatrix4(at(0, 0, 0));
     this.colliders.push({ x: wc.x, z: wc.z, r: 0.7 });
     // The terrace wall is a drop; keep walkers on the steps.
