@@ -14,6 +14,8 @@ const KINDS = {
   marigold: { shape: 'ellipsoid', r: [0.55, 0.4, 0.55], cards: 50, size: 0.35, tex: 'smallleaf', tint: 0x4a7a2a, bloom: 0xe8902a, blooms: 40 },
   yellow: { shape: 'ellipsoid', r: [0.7, 0.55, 0.7], cards: 60, size: 0.4, tex: 'smallleaf', tint: 0x4a7a2a, bloom: 0xf0cf30, blooms: 45 },
   lavender: { shape: 'ellipsoid', r: [0.55, 0.45, 0.55], cards: 70, size: 0.35, tex: 'smallleaf', tint: 0x7d8f78, bloom: 0x9a7ac8, blooms: 60 },
+  ivy: { shape: 'ellipsoid', r: [1.3, 1.35, 0.7], cards: 170, size: 0.5, tex: 'broadleaf', tint: 0x2c4a1e },
+  nasturtium: { shape: 'ellipsoid', r: [0.75, 0.3, 0.75], cards: 60, size: 0.42, tex: 'roundleaf', tint: 0x6aa83a, bloom: 0xe8632a, blooms: 18 },
   hedge: { shape: 'box', r: [1.6, 0.65, 0.5], cards: 170, size: 0.55, tex: 'smallleaf', tint: 0x355f22 },
 };
 

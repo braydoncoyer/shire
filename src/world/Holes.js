@@ -32,6 +32,15 @@ export class HobbitHoles {
     const base = new THREE.Matrix4().makeRotationY(hole.yaw).setPosition(hole.x, hole.y, hole.z);
     const at = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) => base.clone().multiply(mtx(x, y, z, rx, ry, rz, sx, sy, sz));
     const toWorld = (lx, lz) => new THREE.Vector3(lx, 0, lz).applyMatrix4(base);
+    // Like `at`, but y is an offset above the ground at (x, z) (yards can slope, as at Bag End).
+    const ground = (lx, lz) => { const w = toWorld(lx, lz); return heightAt(w.x, w.z) - hole.y; };
+    const atG = (x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) => at(x, ground(x, z) + y, z, rx, ry, rz, sx, sy, sz);
+    // Bag End's facade curves; place things by arc position v and distance u in front of it.
+    const arcW = (v, u) => {
+      const R = hole.arc.R, a = v / R;
+      const dx = hole.fx * Math.cos(a) + hole.fz * Math.sin(a), dz = hole.fz * Math.cos(a) - hole.fx * Math.sin(a);
+      return { x: hole.x - hole.fx * R + dx * (R + u), z: hole.z - hole.fz * R + dz * (R + u), yaw: Math.atan2(dx, dz) };
+    };
     const sc = hole.scale;
     const hw = hole.width / 2, cx = hole.center;
     const yard = hole.yard;
@@ -53,7 +62,18 @@ export class HobbitHoles {
     }
 
     // Chimneys poking through the turf behind.
-    const nCh = hole.width > 7 ? 2 : 1;
+    if (hole.arc) {
+      // Bag End's chimneys stand on top of the dome: a stout stone stack and two brick ones.
+      for (const [v, u, stone] of [[-9.5, -5.5, false], [-1.5, -6.5, true], [5.5, -5, false]]) {
+        const p = arcW(v, u), gy = heightAt(p.x, p.z);
+        const hgt = stone ? 1.5 : 1.2;
+        B.add(stone ? 'stone' : 'brick', box(stone ? 0.8 : 0.6, hgt + 0.8, stone ? 0.8 : 0.6), mtx(p.x, gy + (hgt - 0.8) / 2, p.z, 0, p.yaw), stone ? 0x8f887a : 0x9e5a3e);
+        B.add('stone', box(stone ? 0.95 : 0.74, 0.12, stone ? 0.95 : 0.74), mtx(p.x, gy + hgt + 0.06, p.z, 0, p.yaw), 0x7e786c);
+        for (const o of stone ? [-0.18, 0.18] : [0]) B.add('brick', cylinder(0.1, 0.12, 0.35, 10), mtx(p.x + o, gy + hgt + 0.3, p.z, 0, p.yaw), 0xa8603e);
+        this.chimneys.push(new THREE.Vector3(p.x, gy + hgt + 0.55, p.z));
+      }
+    }
+    const nCh = hole.arc ? 0 : hole.width > 7 ? 2 : 1;
     for (let k = 0; k < nCh; k++) {
       const chx = cx + (nCh === 1 ? (rand() < 0.5 ? -1 : 1) * (0.6 + rand()) : (k ? 1 : -1) * hw * 0.55);
       const chz = -2.6 - rand() * 1.5;
@@ -70,7 +90,9 @@ export class HobbitHoles {
     // Flagstone path from the gate to the door.
     for (let z = 0.5 * sc; z < yard + 0.2; z += 0.55 + rand() * 0.15) {
       const w = 0.55 + rand() * 0.35, d = 0.38 + rand() * 0.14;
-      B.add('stone', box(w, 0.08, d), at((rand() - 0.5) * 0.25, 0.02, z, 0, (rand() - 0.5) * 0.4), FLAG[Math.floor(rand() * FLAG.length)]);
+      if (hole.terrace && z > hole.terrace - 0.2) continue; // steps there instead
+      const x = (rand() - 0.5) * 0.25;
+      B.add('rock', box(w, 0.08, d), atG(x, 0.02, z, 0, (rand() - 0.5) * 0.4), FLAG[Math.floor(rand() * FLAG.length)]);
     }
 
     // Fence and gate along the lane edge.
@@ -81,37 +103,28 @@ export class HobbitHoles {
     const x0 = hole.segments ? -3.2 : cx - hw - 0.6, x1 = hole.segments ? 3.2 : cx + hw + 0.6;
     for (const [a, b] of [[x0, -gate], [gate, x1]]) {
       if (b - a < 0.3) continue;
-      this._fence(B, at, style, a, b, fz, rand);
+      this._fence(B, atG, style, a, b, fz, rand);
       const mid = toWorld((a + b) / 2, fz);
       this.colliders.push({ x: mid.x, z: mid.z, hx: (b - a) / 2, hz: 0.1, rot: hole.yaw });
     }
     for (const s of [-1, 1]) {
-      B.add('wood', box(0.14, 1.15, 0.14), at(s * gate, 0.57, fz), TIMBER);
-      B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), at(s * gate, 1.2, fz), TIMBER);
+      B.add('wood', box(0.14, 1.15, 0.14), atG(s * gate, 0.57, fz), TIMBER);
+      B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), atG(s * gate, 1.2, fz), TIMBER);
     }
     // The gate, swung open.
-    for (const y of [0.35, 0.85]) B.add('wood', box(gate * 1.9, 0.08, 0.05), at(-gate, y, fz, 0, -1.25).multiply(mtx(gate * 0.95, 0, 0)), WEATHERED);
+    for (const y of [0.35, 0.85]) B.add('wood', box(gate * 1.9, 0.08, 0.05), atG(-gate, y, fz, 0, -1.25).multiply(mtx(gate * 0.95, 0, 0)), WEATHERED);
 
     // Letterbox: a hollowed log on a post, or a painted box.
     const lbx = gate + 0.45;
-    B.add('wood', box(0.12, 1.0, 0.12), at(lbx, 0.5, fz + 0.3), TIMBER);
-    if (hole.bagEnd || rand() < 0.5) B.add('wood', cylinder(0.14, 0.14, 0.62, 10), at(lbx, 1.1, fz + 0.3, 0, 0, Math.PI / 2), 0x7a5a3c);
-    else B.add('paint', box(0.3, 0.24, 0.4), at(lbx, 1.1, fz + 0.3), hole.doorColor);
-    if (hole.bagEnd) B.add('plaster', box(0.75, 0.42, 0.03), at(gate + 0.2, 0.9, fz + 0.1), 0xece4cc);
+    B.add('wood', box(0.12, 1.0, 0.12), atG(lbx, 0.5, fz + 0.3), TIMBER);
+    if (hole.bagEnd || rand() < 0.5) B.add('wood', cylinder(0.14, 0.14, 0.62, 10), atG(lbx, 1.1, fz + 0.3, 0, 0, Math.PI / 2), 0x7a5a3c);
+    else B.add('paint', box(0.3, 0.24, 0.4), atG(lbx, 1.1, fz + 0.3), hole.doorColor);
+    // Bag End's "No admittance except on party business" board, hung on the gate.
+    if (hole.bagEnd) B.add('plaster', box(0.75, 0.42, 0.03), atG(-gate + 0.1, 0.72, fz + 0.75, 0, -1.25), 0xece4cc);
 
-    // Bag End's garden: rows of lavender across the terrace in front of the study bay, and a pumpkin
-    // by the door.
-    if (hole.segments) {
-      for (let v = -14; v < -2; v += 0.9)
-        for (const u of [2.2, 3.1]) {
-          const a = v / hole.arc.R, R = hole.arc.R + u;
-          const px = hole.x - hole.fx * hole.arc.R + (hole.fx * Math.cos(a) + hole.fz * Math.sin(a)) * R;
-          const pz = hole.z - hole.fz * hole.arc.R + (hole.fz * Math.cos(a) - hole.fx * Math.sin(a)) * R;
-          this.shrubs.add('lavender', px, pz, 0.8 + rand() * 0.2, rand() * 6.28, hole.y);
-        }
-      B.add('paint', new THREE.SphereGeometry(0.42, 16, 12), at(1.6, 0.3, 1.2, 0.3, 0, 0.2, 1.35, 0.8, 1), 0xd8842a);
-    }
+    if (hole.arc) this._bagEndGarden(B, hole, at, atG, arcW, rand);
 
+    if (!hole.arc) {
     // Planting: bushes at the facade ends, flowering shrubs in the beds, pots by the door.
     for (const e of [cx - hw - 0.5, cx + hw + 0.5]) {
       const p = toWorld(e, 0.5 + rand() * 0.5);
@@ -136,9 +149,10 @@ export class HobbitHoles {
       const p = toWorld(px, 0.45);
       this.shrubs.add(rand() < 0.5 ? 'marigold' : 'roses', p.x, p.z, 0.5, rand() * 6.28, hole.y + 0.28);
     }
+    }
 
     // Occasional props.
-    if (rand() < 0.45 || hole.bagEnd) {
+    if (rand() < 0.45 && !hole.arc) {
       const bx = (rand() < 0.5 ? -1 : 1) * Math.min(hw - 0.9, hole.doorR * sc + 1.4);
       B.add('wood', box(1.3, 0.06, 0.38), at(bx, 0.45, 0.9), WEATHERED);
       B.add('wood', box(1.3, 0.3, 0.05), at(bx, 0.72, 0.72, -0.12), WEATHERED);
@@ -162,10 +176,10 @@ export class HobbitHoles {
     }
     if (rand() < 0.3) {
       const lpx = -gate - 0.5;
-      B.add('metal', box(0.07, 2.0, 0.07), at(lpx, 1.0, fz - 0.25), 0x2a2622);
-      B.add('metal', box(0.22, 0.3, 0.22), at(lpx, 2.1, fz - 0.25), 0x2a2622);
-      B.add('glass', box(0.16, 0.22, 0.16), at(lpx, 2.1, fz - 0.25), 0xff0000);
-      this.lanterns.push(toWorld(lpx, fz - 0.25).setY(hole.y + 2.1));
+      B.add('metal', box(0.07, 2.0, 0.07), atG(lpx, 1.0, fz - 0.25), 0x2a2622);
+      B.add('metal', box(0.22, 0.3, 0.22), atG(lpx, 2.1, fz - 0.25), 0x2a2622);
+      B.add('glass', box(0.16, 0.22, 0.16), atG(lpx, 2.1, fz - 0.25), 0xff0000);
+      this.lanterns.push(toWorld(lpx, fz - 0.25).setY(hole.y + ground(lpx, fz - 0.25) + 2.1));
     }
 
     // Vegetable rows (instanced below).
@@ -181,6 +195,92 @@ export class HobbitHoles {
     // The mound and facade block the way.
     const m = toWorld(cx, -2);
     this.colliders.push({ x: m.x, z: m.z, hx: hw, hz: 2.05, rot: hole.yaw });
+  }
+
+  /** Bag End's garden, after the set: see refs/ and docs/hobbiton-reference.md. */
+  _bagEndGarden(B, hole, at, atG, arcW, rand) {
+    const T = hole.terrace;
+    const shrubs = this.shrubs;
+
+    // Stone steps from the terrace down to the gate, set into the slope.
+    // Rough, uneven slabs, each laid as two or three stones, with grass creeping between them.
+    const STEP = [0x857d6e, 0x9a907e, 0x7a7466, 0x8e8676];
+    for (let u = T + 0.3; u < hole.yard + 0.1; u += 0.48 + rand() * 0.08) {
+      let x = -0.55 + (rand() - 0.5) * 0.15;
+      while (x < 0.95) {
+        const w = 0.45 + rand() * 0.45;
+        B.add('rock', box(w - 0.04, 0.2, 0.5 + rand() * 0.12), atG(x + w / 2, -0.04 + rand() * 0.04, u + (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.06, (rand() - 0.5) * 0.25, (rand() - 0.5) * 0.06), STEP[Math.floor(rand() * STEP.length)]);
+        x += w;
+      }
+    }
+    // Big irregular flagstones on the terrace: the path to the door, spreading right to the bench.
+    for (let k = 0; k < 42; k++) {
+      const u = 0.5 + rand() * (T - 0.7), x = -0.8 + rand() * 4.6 * (u > 1.6 ? 1 : 0.4);
+      const w = 0.45 + rand() * 0.45, d = 0.35 + rand() * 0.3;
+      B.add('rock', box(w, 0.06, d), at(x, 0.0, u, 0, rand() * 3), FLAG[Math.floor(rand() * FLAG.length)]);
+    }
+
+    // The dry-stone retaining wall along the terrace edge, broken by the steps.
+    for (let v = -12.8; v < 8.8; v += 0.42) {
+      if (Math.abs(v - 0.2) < 1.0) continue;
+      const p = arcW(v, T + 0.25);
+      const top = hole.y + 0.08;
+      const foot = heightAt(p.x, p.z) - 0.15;
+      if (foot > top - 0.2) continue;
+      // Long, flat fieldstones laid in rough courses, from the ground below up to the terrace.
+      for (let y = Math.max(foot, hole.y - 1.6); y < top; y += 0.19) {
+        const w = 0.4 + rand() * 0.45, h = 0.13 + rand() * 0.08;
+        const tint = [0x7a7362, 0x8a806c, 0x6a6556, 0x958b76, 0x5f5a4c][Math.floor(rand() * 5)];
+        const q = arcW(v + (rand() - 0.5) * 0.25, T + 0.25 + (rand() - 0.5) * 0.06);
+        B.add('rock', box(w, h, 0.36), mtx(q.x, y + h / 2, q.z, (rand() - 0.5) * 0.05, q.yaw + (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.08), tint);
+      }
+    }
+
+    // Lavender along the terrace in front of the study; herbs and cottage flowers by the door.
+    for (let v = -14.5; v < -2.5; v += 0.8)
+      for (const u of [2.0, 3.0]) {
+        const p = arcW(v + (rand() - 0.5) * 0.3, u + (rand() - 0.5) * 0.3);
+        shrubs.add('lavender', p.x, p.z, 0.75 + rand() * 0.25, rand() * 6.28, hole.y);
+      }
+    for (const [v, u, k] of [[-1.8, 0.8, 'roses'], [1.9, 0.8, 'hydrangea'], [2.6, 1.6, 'yellow'], [-2.4, 1.4, 'marigold'], [5.5, 1.2, 'yellow'], [6.5, 2.2, 'roses'], [3.8, 3.4, 'hydrangea']]) {
+      const p = arcW(v, u);
+      shrubs.add(k, p.x, p.z, 0.8 + rand() * 0.3, rand() * 6.28, hole.y);
+    }
+    // Nasturtiums tumbling along the foot of the wall, and more on the slope.
+    for (let v = -13; v < 8; v += 1.1) {
+      if (Math.abs(v - 0.2) < 1.4 || rand() < 0.3) continue;
+      const p = arcW(v, T + 1.1 + rand() * 1.6);
+      shrubs.add('nasturtium', p.x, p.z, 0.9 + rand() * 0.5, rand() * 6.28);
+    }
+    // Ivy smothering the turf between the facade segments.
+    const spans = hole.segSpans;
+    for (let k = 0; k < spans.length - 1; k++) {
+      const v = (spans[k][1] + spans[k + 1][0]) / 2;
+      const p = arcW(v, 0.4);
+      shrubs.add('ivy', p.x, p.z, 1.15 + rand() * 0.3, p.yaw, hole.y);
+    }
+
+    // Bilbo's bench on the terrace, and the giant pumpkin in its wheelbarrow by the steps.
+    const bx = 3.4, bz = 2.2;
+    B.add('wood', box(1.5, 0.07, 0.42), at(bx, 0.46, bz, 0, 0.25), 0x8a7152);
+    B.add('wood', box(1.5, 0.32, 0.05), at(bx, 0.72, bz - 0.2, -0.15, 0.25), 0x8a7152);
+    for (const s of [-1, 1]) B.add('wood', box(0.08, 0.46, 0.38), at(bx + s * 0.62 * Math.cos(0.25), 0.23, bz - s * 0.62 * Math.sin(0.25), 0, 0.25), 0x5c4330);
+    const wx = -2.4, wz = T - 0.8, wr = 0.5;
+    B.add('wood', box(1.1, 0.08, 0.7), at(wx, 0.42, wz, 0, wr, -0.12), 0x6e5238);
+    for (const s of [-1, 1]) B.add('wood', box(1.1, 0.25, 0.05), at(wx, 0.52, wz + s * 0.35, 0, wr, -0.12), 0x6e5238);
+    for (const s of [-1, 1]) B.add('wood', box(1.0, 0.05, 0.05), at(wx - 0.9 * Math.cos(wr), 0.45, wz + 0.9 * Math.sin(wr) + s * 0.28, 0, wr, 0.25), 0x5c4330);
+    B.add('wood', new THREE.TorusGeometry(0.22, 0.05, 6, 16), at(wx + 0.6 * Math.cos(wr), 0.23, wz - 0.6 * Math.sin(wr), 0, wr + Math.PI / 2, 0), 0x4a3526);
+    B.add('paint', new THREE.SphereGeometry(0.5, 20, 14), at(wx, 0.82, wz, 0, 0, 0.1, 1.25, 0.72, 1.05), 0xe08a2e);
+    B.add('wood', cylinder(0.05, 0.07, 0.22, 6), at(wx - 0.1, 1.22, wz, 0.3, 0, 0.3), 0x6a6a3a);
+    const wc = new THREE.Vector3(wx, 0, wz).applyMatrix4(at(0, 0, 0));
+    this.colliders.push({ x: wc.x, z: wc.z, r: 0.7 });
+    // The terrace wall is a drop; keep walkers on the steps.
+    for (const [v0, v1] of [[-12.8, -0.8], [1.2, 8.8]]) {
+      for (let v = v0; v < v1; v += 1.5) {
+        const p = arcW(v, T + 0.25);
+        this.colliders.push({ x: p.x, z: p.z, r: 0.55 });
+      }
+    }
   }
 
   _fence(B, at, style, a, b, z, rand) {

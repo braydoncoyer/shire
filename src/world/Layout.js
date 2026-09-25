@@ -103,7 +103,8 @@ function sculpt(x, z, h) {
   const shore = smoothstep(6, 22, lakeDist(x, z));
   // Only the ground the village is built on is terraced; open slopes between lanes stay natural.
   const near = 1 - smoothstep(9, 22, sampleGrid(laneDist, x, z, 99));
-  const w = village * shore * near * 0.8;
+  const knoll = smoothstep(26, 40, Math.hypot(x - oakX, z - oakZ)); // Bag End's knoll stays smooth
+  const w = village * shore * near * knoll * 0.8;
   if (w > 0.001 && h > FIELD_Y - 2) {
     const T = 3.2;
     // Wobble the terrace lines so they follow the land rather than exact contours.
@@ -122,7 +123,7 @@ function sculpt(x, z, h) {
   }
   // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
   const kd = Math.hypot(x - oakX, z - oakZ);
-  h += 7.5 * Math.exp(-((kd / 17) ** 2.2));
+  h += 10.5 * Math.exp(-((kd / 21) ** 2.1));
   return h;
 }
 
@@ -482,23 +483,34 @@ function holeCut(hole, dx, dz, h) {
   const [u, v0] = holeLocal(hole, dx, dz);
   const v = v0 - hole.center;
   const hw = hole.width / 2;
-  if (hole.segSpans && u > -0.6 && u < 2.5) {
-    // Between Bag End's facade segments the turf bulges forward and slopes down to the path.
+  if (hole.segSpans && u > -2 && u < 4) {
+    // Between Bag End's facade segments (and past its ends) the turf bulges forward, level with the
+    // hoods, and slopes down to the terrace.
     let gap = Infinity;
     for (const [a, b] of hole.segSpans) gap = Math.min(gap, Math.max(a - v0, v0 - b, 0));
-    if (gap > 0.05 && v0 > hole.segSpans[0][0] - 0.5 && v0 < hole.segSpans[hole.segSpans.length - 1][1] + 0.5) {
-      const bulge = hole.y + Math.min(gap * 2.2, 3.4) - Math.max(0, u + 0.6) * 1.4;
-      return Math.max(bulge, hole.y);
+    const first = hole.segSpans[0][0], last = hole.segSpans[hole.segSpans.length - 1][1];
+    if (gap > 0.02 && v0 > first - 4 && v0 < last + 4) {
+      const bulge = hole.y + Math.min(2.5 + gap * 2.2, 3.9) - Math.max(0, u + 0.3) * 1.1;
+      h = Math.max(bulge, hole.y);
+      if (u < 0.8) return h;
     }
   }
   if (u > -0.6) {
-    const lat = 1 - smoothstep(hw + 0.6, hw + 4, Math.abs(v));
+    const lat = 1 - smoothstep(hw + 0.6, hw + (hole.arc ? 9 : 4), Math.abs(v));
     const front = 1 - smoothstep(hole.yard + 0.2, hole.yard + 1.8, u);
-    return lerp(h, hole.y, lat * front);
+    let target = hole.y;
+    if (hole.terrace && u > hole.terrace) {
+      // Below the retaining wall the garden slopes down to the lane.
+      const t = smoothstep(hole.terrace, hole.yard + 0.5, u);
+      target = lerp(hole.y - 0.9, hole.laneY + 0.1, t);
+    }
+    // Bag End's grounds stop at the lanes around them (except at its own gate).
+    const keepLane = hole.arc && Math.abs(v0) > 2.5 ? 1 - laneMask(hole.x + dx * 0 + dx, hole.z + dz * 0 + dz) : 1;
+    return lerp(h, target, lat * front * keepLane);
   }
   if (hole.arc) {
     // Behind a curved facade the knoll carries the turf; just make sure it clears the facade.
-    const cover = hole.y + 3.9 * (1 - smoothstep(4, 14, -u)) * (1 - smoothstep(hw + 1, hw + 5, Math.abs(v)));
+    const cover = hole.y + 3.9 * (1 - smoothstep(4, 16, -u)) * (1 - smoothstep(hw - 1, hw + 9, Math.abs(v)));
     return smax(h, cover, 1.0);
   }
   const dome = hole.y + moundTop(hole, v0, -u) + 0.2;
@@ -539,8 +551,11 @@ function nearestOnLanes(x, z, lanes) {
     let fx = lane.x - beX, fz = lane.z - beZ;
     const l = Math.hypot(fx, fz); fx /= l; fz /= l;
     const laneY = baseHeight(lane.x, lane.z);
-    HOLES.push(makeHole(rand, beX, beZ, fx, fz, laneY + 1.9, Math.max(3.2, l - 1.9), {
-      bagEnd: true, name: 'Bag End', doorColor: 0x2f6b3a, knob: 'center', plaster: 0xd9ad4f, frame: 0x2f6b3a, arch: 'brick',
+    // The mapped point is the building; the front door sits 7 m further into the knoll, leaving room
+    // for the garden terrace, the retaining wall and the steps down to the gate.
+    const back = 7;
+    HOLES.push(makeHole(rand, beX - fx * back, beZ - fz * back, fx, fz, laneY + 2.5, l + back - 1.3, {
+      bagEnd: true, name: 'Bag End', doorColor: 0x2b7352, knob: 'center', plaster: 0xe0b656, frame: 0x2f6b3a, arch: 'brick',
       windowStyle: 'grid', doorR: 1.02, lit: true, fence: 'wattle',
       // Segments of the facade set around the curve of the dome, left to right as seen from the
       // lane: two small round windows, the arched study bay, a round window, then the door between
@@ -551,6 +566,7 @@ function nearestOnLanes(x, z, lanes) {
         { v: -4.6, bays: [{ kind: 'window', w: 1.35 }] },
         { v: 0, bays: [{ kind: 'small', w: 1.05 }, { kind: 'door', w: 2.8 }, { kind: 'small', w: 1.05 }] },
         { v: 4.1, bays: [{ kind: 'window', w: 1.4 }] },
+        { v: 7.4, bays: [{ kind: 'small', w: 1.0 }, { kind: 'window', w: 1.3 }] },
       ],
       bays: [{ kind: 'small', w: 1.05 }, { kind: 'door', w: 2.8 }, { kind: 'small', w: 1.05 }],
     }));
@@ -560,9 +576,12 @@ function nearestOnLanes(x, z, lanes) {
       const laid = layoutBays({ bays: seg.bays, doorR: 1.02 });
       return [seg.v + laid[0].a, seg.v + laid[laid.length - 1].b];
     });
-    be.width = 19; // arc span of the segments (−13.6 … +4.9)
-    be.center = -4.35;
-    be.reach2 = 30 * 30;
+    be.width = 22; // arc span of the segments (−13.6 … +8.7)
+    be.center = -2.45;
+    be.reach2 = 34 * 34;
+    // A level terrace in front of the door, a dry-stone retaining wall, then a slope with steps.
+    be.terrace = 4.6;
+    be.laneY = laneY;
   }
 
   // Bagshot Row: the two walk-through interiors (mapped as tunnels) and Sam's yellow door between.
@@ -612,6 +631,11 @@ function nearestOnLanes(x, z, lanes) {
   for (const c of cands) {
     if (HOLES.length >= HOLE_COUNT) break;
     if (tooClose(c.x, c.z, 10.5)) continue;
+    // The slope below Bag End is its garden: no neighbours in front of it.
+    {
+      const be = HOLES[0], dx = c.x - be.x, dz = c.z - be.z;
+      if (Math.hypot(dx, dz) < 34 && dx * be.fx + dz * be.fz > -6) continue;
+    }
     if (Math.abs(c.x) > 270 || Math.abs(c.z) > 270) continue;
     if (lakeFactor(c.x, c.z) > 0 || lakeDist(c.x, c.z) < 8) continue;
     // Keep other lanes out of the mound behind and the yard in front, and the facade off the lane.
@@ -627,6 +651,13 @@ function nearestOnLanes(x, z, lanes) {
 
   // Door paths from the lane to each door, then the yard and bed masks.
   for (const hole of HOLES) {
+    if (hole.arc) {
+      // Bag End's garden is lawn and flagstones; only the flight of steps is kept clear.
+      const a = [hole.x + hole.fx * (hole.terrace + 0.2) + hole.fz * 0.2, hole.z + hole.fz * (hole.terrace + 0.2) - hole.fx * 0.2];
+      const b = [hole.x + hole.fx * (hole.yard + 0.4) + hole.fz * 0.2, hole.z + hole.fz * (hole.yard + 0.4) - hole.fx * 0.2];
+      bakePolyline([a, b], 1.6, laneDist, laneWidth);
+      continue;
+    }
     const a = [hole.x + hole.fx * 1.3, hole.z + hole.fz * 1.3];
     const b = [hole.x + hole.fx * (hole.yard + 1.8), hole.z + hole.fz * (hole.yard + 1.8)];
     bakePolyline([a, b], hole.bagEnd ? 1.5 : 1.1, laneDist, laneWidth);
@@ -644,6 +675,7 @@ function nearestOnLanes(x, z, lanes) {
         if (u < 0 || u > hole.yard + 0.3 || Math.abs(v) > hw + 1.2) continue;
         const k = j * N + i;
         yardGrid[k] = 255;
+        if (hole.arc) continue; // Bag End's beds are planted individually
         if (Math.abs(v0) < 0.9) continue; // the path
         const facadeBed = u < 1.4 && Math.abs(v) > 1.1;
         const fenceBed = u > hole.yard - 1.0;

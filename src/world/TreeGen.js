@@ -81,7 +81,27 @@ function paintLeafCluster(kind) {
     g.stroke();
     g.restore();
   };
-  if (kind === 'needles') {
+  if (kind === 'roundleaf') {
+    // Nasturtium: round, flat leaves on long stalks, pale veins radiating from the middle.
+    for (let i = 0; i < 26; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * W * 0.36;
+      const x = W / 2 + Math.cos(a) * r, y = H / 2 + Math.sin(a) * r, R = 16 + rand() * 12;
+      const v = Math.round(150 + rand() * 105);
+      g.fillStyle = `rgb(${v},${v},${v})`;
+      g.beginPath();
+      g.arc(x, y, R, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(255,255,255,0.35)';
+      g.lineWidth = 1.2;
+      for (let k = 0; k < 9; k++) {
+        const b = (k / 9) * Math.PI * 2;
+        g.beginPath();
+        g.moveTo(x, y);
+        g.lineTo(x + Math.cos(b) * R * 0.9, y + Math.sin(b) * R * 0.9);
+        g.stroke();
+      }
+    }
+  } else if (kind === 'needles') {
     // Tufts of needles radiating from short twigs.
     for (let t = 0; t < 14; t++) {
       const cx = W * (0.2 + rand() * 0.6), cy = H * (0.25 + rand() * 0.5);

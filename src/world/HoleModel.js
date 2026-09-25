@@ -119,10 +119,9 @@ export function buildFacade(B, spec, base) {
   add('wood', new THREE.TorusGeometry(doorR + 0.02, 0.07, 6, 36), at(0, doorR + 0.02, -0.08), TIMBER);
   const kx = spec.knob === 'center' ? 0 : spec.knob === 'left' ? -doorR * 0.62 : doorR * 0.62;
   add('metal', new THREE.SphereGeometry(0.07, 12, 8), at(kx, doorR + 0.02, -0.1), 0xc9a24a);
-  // Iron strap hinges on the side away from the knob.
   hs = kx > 0.01 ? -1 : 1;
-  for (const y of [0.45, 1.45].map((t) => t * doorR))
-    add('metal', box(doorR * 0.9, 0.05, 0.02), at(hs * doorR * 0.45, y + 0.02, -0.13), 0x2a2622);
+  // A timber reveal lining the doorway between the brick ring and the recessed door.
+  add('wood', new THREE.CylinderGeometry(doorR + 0.03, doorR + 0.03, 0.26, 36, 1, true).rotateX(Math.PI / 2), at(0, doorR + 0.02, -0.08), 0x6b5a48);
   if (arch !== 'none') brickRing(add, at, 0, doorR + 0.02, doorR + 0.09, rand, archMat, archPal);
   // Threshold stone.
   add('stone', box(doorR * 2, 0.14, 0.5), at(0, 0.0, 0.2), 0xa39c8e);
@@ -136,8 +135,14 @@ export function buildFacade(B, spec, base) {
     add('glass', new THREE.CircleGeometry(r, 18, 0, Math.PI), at(x, y1, -0.13), spec.lit ? 0xff0000 : 0x000000);
     add('wood', new THREE.TorusGeometry(r + 0.04, 0.07, 6, 18, Math.PI), at(x, y1, -0.04), TIMBER);
     for (const s of [-1, 1]) add('wood', box(0.1, y1 - y0, 0.1), at(x + s * (r + 0.04), (y0 + y1) / 2, -0.04), TIMBER);
-    for (const t of [-0.5, 0, 0.5]) add('paint', box(0.035, y1 - y0 + r * Math.sqrt(1 - t * t), 0.03), at(x + t * r, (y0 + y1 + r * Math.sqrt(1 - t * t)) / 2, -0.11), spec.frame);
-    for (const yy of [y0 + (y1 - y0) / 3, y0 + (2 * (y1 - y0)) / 3, y1]) add('paint', box(r * 2, 0.035, 0.03), at(x, yy, -0.11), spec.frame);
+    // Casement below (mullions and transoms), sunburst tracery in the arch head.
+    for (const t of [-0.5, 0, 0.5]) add('paint', box(0.035, y1 - y0, 0.03), at(x + t * r, (y0 + y1) / 2, -0.11), spec.frame);
+    for (const yy of [y0 + (y1 - y0) / 2, y1]) add('paint', box(r * 2, 0.04, 0.03), at(x, yy, -0.11), spec.frame);
+    for (let k = 1; k < 6; k++) {
+      const a = (k / 6) * Math.PI;
+      add('wood', box(r, 0.05, 0.04), at(x + Math.cos(a) * r * 0.5, y1 + Math.sin(a) * r * 0.5, -0.1, 0, 0, a), TIMBER);
+    }
+    add('wood', new THREE.TorusGeometry(r * 0.28, 0.035, 5, 12, Math.PI), at(x, y1, -0.1), TIMBER);
     add('wood', box(r * 2 + 0.3, 0.09, 0.3), at(x, y0 - 0.05, 0.1), TIMBER);
     // A central king post rising to the arch crown, like the set's timber tracery.
     add('wood', box(0.12, b.spring + b.rise - y1 - r, 0.1), at(x, (y1 + r + b.spring + b.rise) / 2, 0.02), TIMBER);
@@ -161,30 +166,39 @@ export function buildFacade(B, spec, base) {
       add('wood', br, at(v + s * 0.28, sp - 0.28, 0.06, 0, 0, s > 0 ? Math.PI / 2 : 0), TIMBER);
     }
   }
-  add('wood', band(bays, 0.0, 0.13, 0.22, -0.08), at(0, 0, 0), TIMBER);
+  // Curved timber soffits: each bay's arch is capped by a deep plank eave under the turf.
+  add('wood', band(bays, 0.0, 0.16, 0.62, -0.12), at(0, 0, 0), TIMBER);
+  add('wood', band(bays, -0.08, 0.02, 0.1, 0.4), at(0, 0, 0), 0x3f2e20);
 
   // The turf hood: a thick overhanging lip of grassy earth following the arches.
   add('turf', band(bays, 0.12, 0.55, 2.15, -1.6), at(0, 0, 0), 0xffffff);
+  // Round the hood off where it ends, so it rolls into the mound instead of stopping flat.
+  for (const b of [bays[0], bays[bays.length - 1]]) {
+    const v = b === bays[0] ? b.a : b.b;
+    const y = archY(b, v) + 0.34;
+    add('turf', new THREE.SphereGeometry(1, 14, 10).scale(0.7, 0.55, 1.2), at(v, y, -0.5), 0xffffff);
+  }
+
   // Shaggy grass: strands hanging from the hood's front lip, tufts along its top.
-  for (const p of archPoints(bays, 0.14, 22)) {
-    const len = 0.18 + rand() * 0.28, w = 0.22 + rand() * 0.14;
+  for (const p of archPoints(bays, 0.14, 40)) {
+    const len = 0.25 + rand() * 0.4, w = 0.22 + rand() * 0.16;
     const card = new THREE.PlaneGeometry(w, len).translate(0, -len / 2, 0);
     add('fringe', card, at(p.x + (rand() - 0.5) * 0.1, p.y + 0.02, 0.56 + rand() * 0.04, -0.25 - rand() * 0.3, (rand() - 0.5) * 0.4, 0), 0xffffff);
   }
-  for (const p of archPoints(bays, 0.5, 16)) {
-    const len = 0.2 + rand() * 0.2, w = 0.3;
+  for (const p of archPoints(bays, 0.5, 30)) {
+    const len = 0.25 + rand() * 0.25, w = 0.32;
     const card = new THREE.PlaneGeometry(w, len).rotateZ(Math.PI).translate(0, len / 2, 0);
     add('fringe', card, at(p.x, p.y, 0.35 + rand() * 0.15, 0.3, (rand() - 0.5) * 0.8, 0), 0xffffff);
   }
 
-  // Lantern on the post beside the door (away from the knob side).
+  // A lantern hanging from the soffit at the crown of the door's arch.
   const lv = bays.find((b) => b.kind === 'door');
   if (!lv) return { lanterns, bays };
-  const lx = hs > 0 ? lv.b : lv.a;
-  add('metal', box(0.03, 0.03, 0.35), at(lx, lv.spring - 0.2, 0.28), 0x2a2622);
-  add('metal', box(0.17, 0.24, 0.17), at(lx, lv.spring - 0.38, 0.42), 0x2a2622);
-  add('glass', box(0.12, 0.17, 0.12), at(lx, lv.spring - 0.38, 0.42), 0xff0000);
-  lanterns.push(new THREE.Vector3(lx, lv.spring - 0.38, 0.55).applyMatrix4(base));
+  const ly = lv.spring + lv.rise - 0.32;
+  add('metal', cylinder(0.012, 0.012, 0.22, 4), at(0, ly + 0.2, 0.25), 0x2a2622);
+  add('metal', cylinder(0.05, 0.11, 0.08, 10), at(0, ly + 0.08, 0.25), 0x3a4a52);
+  add('glass', cylinder(0.075, 0.075, 0.16, 10), at(0, ly - 0.04, 0.25), 0xff0000);
+  lanterns.push(new THREE.Vector3(0, ly - 0.04, 0.35).applyMatrix4(base));
 
   return { lanterns, bays };
 }

@@ -101,7 +101,7 @@ export function makeMaterials(sky, noiseTex) {
     const p = uv();
     const strands = texture(noiseTex, vec2(p.x.mul(11), p.y.mul(1.2))).a;
     const patch = texture(noiseTex, p.mul(0.7)).r;
-    const g = mix(color(0x35601a), color(0x6f9a2c), strands.mul(0.6).add(patch.mul(0.5)).sub(0.1).saturate());
+    const g = mix(color(0x2e5516), color(0x5f8c26), strands.mul(0.6).add(patch.mul(0.5)).sub(0.1).saturate());
     return g.mul(vcol);
   })();
 
@@ -111,7 +111,7 @@ export function makeMaterials(sky, noiseTex) {
   const strandTex = texture(strandTexture(), uv());
   fringe.colorNode = Fn(() => {
     const a = saturate(strandTex.a.sub(0.45).div(max(fwidth(strandTex.a), 1e-4)).add(0.5));
-    return vec4(mix(color(0x2f5a16), color(0x86a83a), strandTex.r).mul(vcol), a);
+    return vec4(mix(color(0x234612), color(0x5c8a28), strandTex.r).mul(vcol), a);
   })();
 
   // Straw fringe: the ragged hanging ends of thatch along the eaves.
@@ -120,6 +120,15 @@ export function makeMaterials(sky, noiseTex) {
   straw.colorNode = Fn(() => {
     const a = saturate(strandTex.a.sub(0.45).div(max(fwidth(strandTex.a), 1e-4)).add(0.5));
     return vec4(mix(color(0x3a3228), color(0x8a7858), strandTex.r), a);
+  })();
+
+  // Rock: individual stones (wall stones, flags, steps): mottled and lichen-spotted, no mortar.
+  const rock = new THREE.MeshStandardNodeMaterial({ roughness: 0.95 });
+  rock.colorNode = Fn(() => {
+    const w = positionWorld.xz.add(positionWorld.y);
+    const m = texture(noiseTex, w.mul(0.9)).g.mul(0.35).add(texture(noiseTex, w.mul(4.1)).a.mul(0.25)).add(0.72);
+    const lichen = smoothstep(0.62, 0.75, texture(noiseTex, w.mul(1.7)).b);
+    return mix(vcol.mul(m), vec3(0.55, 0.56, 0.42), lichen.mul(0.35));
   })();
 
   const metal = new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 1 });
@@ -137,7 +146,7 @@ export function makeMaterials(sky, noiseTex) {
     return lampWarm.mul(lit).mul(smoothstep(0.05, 0.6, night)).mul(0.11).mul(grid).mul(flicker.mul(0.08).add(0.95));
   })();
 
-  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster, thatch, turf, fringe, straw };
+  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster, thatch, turf, fringe, straw, rock };
   mats.flicker = flicker;
   return mats;
 }

@@ -135,7 +135,7 @@ export function makeTerrainMaterial(groundNoise, laneTex, waterTex) {
     const dist = positionWorld.sub(cameraPosition).length();
     g.mulAssign(mix(float(0.55), float(1), smoothstep(8, 60, dist)));
     const slope = float(1).sub(normalWorld.y);
-    g.assign(mix(g, soil, smoothstep(0.35, 0.6, slope).mul(0.5)));
+    g.assign(mix(g, g.mul(0.72), smoothstep(0.35, 0.7, slope)));
 
     // Gravel lanes with frayed, grassy edges.
     const inInner = step(abs(wp.x), 279).mul(step(abs(wp.y), 279));
@@ -145,7 +145,7 @@ export function makeTerrainMaterial(groundNoise, laneTex, waterTex) {
     const edge = smoothstep(0.2, 0.45, lt.r.add(fray)).mul(inInner).sub(lane).max(0);
     const pebble = texture(groundNoise, wp.div(0.31)).a;
     const grav = mix(gravelDark, gravel, n4.r.mul(0.5).add(n3.g.mul(0.2)).add(pebble.mul(0.5)).sub(0.1).saturate());
-    const col = mix(g, soil.mul(1.1), edge.mul(0.55)).toVar();
+    const col = mix(g, soil.mul(1.1), edge.mul(0.25)).toVar();
     col.assign(mix(col, grav, lane));
 
     // Garden beds: dark, dug soil (vegetable rows are barer than flower beds).
