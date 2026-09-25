@@ -120,7 +120,7 @@ function sculpt(x, z, h) {
     const dx = x - GD_BANK.x, dz = z - GD_BANK.z;
     const back = -(dx * GD_BANK.fx + dz * GD_BANK.fz), side = dx * GD_BANK.fz - dz * GD_BANK.fx;
     const dp = polyDistSimple(GD_BANK.poly, x, z);
-    h += 17 * smoothstep(5, 30, dp) * smoothstep(-6, 8, back) * (1 - smoothstep(40, 80, Math.abs(side)));
+    h += 17 * smoothstep(5, 30, dp) * smoothstep(-6, 8, back) * (1 - smoothstep(40, 80, Math.abs(side))) * smoothstep(4, 28, lakeDist(x, z));
   }
   // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
   // Centered a few meters behind the oak (away from Bag End), so the house sits on its flank.
@@ -139,10 +139,17 @@ const laneWidth = new Float32Array(N * N).fill(0);
 const streamDist = new Float32Array(N * N).fill(99);
 const streamBed = new Float32Array(N * N).fill(0);
 const laneHeight = new Float32Array(N * N).fill(0); // surface height of the nearest lane
+// The nearest lane's id, and the second-nearest *other* lane, so neighbouring lanes at different
+// heights blend instead of meeting in a cliff.
+const laneId = new Int32Array(N * N).fill(-1);
+const lane2Dist = new Float32Array(N * N).fill(99);
+const lane2Width = new Float32Array(N * N).fill(0);
+const lane2Height = new Float32Array(N * N).fill(0);
+let nextLaneId = 0;
 const yardGrid = new Uint8Array(N * N);
 const bedGrid = new Uint8Array(N * N);
 
-function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = width * 0.5 + 16) {
+function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = width * 0.5 + 30, id = -1) {
   for (let s = 0; s < pts.length - 1; s++) {
     const [ax, az] = pts[s], [bx, bz] = pts[s + 1];
     const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach + INNER_HALF) / RES));
@@ -159,6 +166,20 @@ function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = widt
         const px = ax + dx * t - x, pz = az + dz * t - z;
         const d = Math.sqrt(px * px + pz * pz) + (widthOut ? Math.sin(x * 0.21 + z * 0.13) * 0.15 : 0);
         const k = j * N + i;
+        if (id >= 0) {
+          // Lanes: keep the nearest and the second-nearest distinct lane (compared by edge).
+          const e = d - width * 0.5;
+          const val = values ? values[s] + (values[s + 1] - values[s]) * t : 0;
+          if (laneId[k] === id) {
+            if (e < dist[k] - widthOut[k] * 0.5) { dist[k] = d; widthOut[k] = width; valueOut[k] = val; }
+          } else if (e < dist[k] - widthOut[k] * 0.5) {
+            if (laneId[k] >= 0) { lane2Dist[k] = dist[k]; lane2Width[k] = widthOut[k]; lane2Height[k] = valueOut[k]; }
+            dist[k] = d; widthOut[k] = width; valueOut[k] = val; laneId[k] = id;
+          } else if (e < lane2Dist[k] - lane2Width[k] * 0.5) {
+            lane2Dist[k] = d; lane2Width[k] = width; lane2Height[k] = val;
+          }
+          continue;
+        }
         // Lanes compare edges (a wide lane wins over a narrow one it overlaps); plain fields compare centers.
         if (widthOut ? d - width * 0.5 < dist[k] - widthOut[k] * 0.5 : d < dist[k]) {
           dist[k] = d;
@@ -444,7 +465,7 @@ function resample(pts, step) {
       if (fixed[i] !== null) { prof[i] = fixed[i]; climbing = false; continue; }
       const gap = t[i] - prof[i - 1];
       if (canStep && !climbing && rest <= 0 && Math.abs(gap) > STAIR_TRIGGER) { climbing = true; flight = 0; }
-      if (climbing && ++flight > 8) { climbing = false; rest = 6; } // a landing after each flight
+      if (climbing && ++flight > 12) { climbing = false; rest = 3; } // a landing after each flight
       rest--;
       if (climbing && Math.abs(gap) < 0.1) climbing = false;
       const g = climbing ? STAIR_GRADE : grade;
@@ -461,7 +482,7 @@ function resample(pts, step) {
       if (Math.abs(prof[j] - prof[i - 1]) > 0.35) LANE_STAIRS.push({ pts: pts.slice(i - 1, j + 1), ys: prof.slice(i - 1, j + 1), width: lane.width });
       i = j;
     }
-    bakePolyline(pts, lane.width, laneDist, laneWidth, prof, laneHeight);
+    bakePolyline(pts, lane.width, laneDist, laneWidth, prof, laneHeight, undefined, nextLaneId++);
     for (let k = 0; k < N * N; k++) if (!baked[k] && laneDist[k] < 99) baked[k] = 1;
   }
 }
@@ -469,9 +490,13 @@ function resample(pts, step) {
 /** Nearest lane's surface height and signed distance from its edge (negative on the lane). */
 function laneAt(x, z) {
   const d = sampleGrid(laneDist, x, z, 99);
-  if (d > 30) return null;
+  if (d > 32) return null;
   const w = sampleGrid(laneWidth, x, z, 2) || 2;
-  return { y: sampleGrid(laneHeight, x, z, 0), edge: d - w * 0.5 };
+  const d2 = sampleGrid(lane2Dist, x, z, 99);
+  const second = d2 < 32 ? { y: sampleGrid(lane2Height, x, z, 0), edge: d2 - (sampleGrid(lane2Width, x, z, 2) || 2) * 0.5 } : null;
+  const i = Math.round((x + INNER_HALF) / RES), j = Math.round((z + INNER_HALF) / RES);
+  const id = i >= 0 && j >= 0 && i < N && j < N ? laneId[j * N + i] : -1;
+  return { y: sampleGrid(laneHeight, x, z, 0), edge: d - w * 0.5, second, id };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -500,11 +525,16 @@ function baseHeight(x, z) {
   let h = naturalHeight(x, z);
   const lane = laneAt(x, z);
   if (lane) {
-    // The lane is level at its profile height; the land meets it in a bank whose width grows with
-    // the height difference (about 40 degrees), cut above and built up below.
-    const surf = lane.y - 0.1;
-    const bank = 0.6 + Math.abs(h - surf) * 2.1;
-    h = lerp(surf, h, smoothstep(0, bank, lane.edge));
+    // Each lane is level at its profile height; the land meets it in a bank whose width grows with
+    // the height difference, cut above and built up below. The second-nearest lane is applied
+    // first, so where two lanes' banks meet they blend rather than step.
+    for (const L of [lane.second, lane]) {
+      if (!L) continue;
+      const surf = L.y - 0.1;
+      // (capped so the bank always finishes inside the baked field)
+      const bank = Math.min(0.6 + Math.abs(h - surf) * 2.1, 26);
+      h = lerp(surf, h, smoothstep(0, bank, Math.max(L.edge, 0)));
+    }
   }
   // Streams run in small valleys: a channel, then gentle banks rising away from it.
   const sd = sampleGrid(streamDist, x, z, 99);
@@ -621,8 +651,14 @@ function bagEndCover(hole, u, v, hw) {
 /** A hole's level yard (pass 0). Every yard is cut before any mound is raised. */
 function holeYard(hole, dx, dz, h) {
   const [u, v0] = holeLocal(hole, dx, dz);
-  if (u <= -0.6 || hole.arc) return h;
+  if (hole.arc) return h;
   const v = v0 - hole.center, hw = hole.width / 2;
+  // Behind the facade line the cut ends (the facade and mound cover it), but out past the facade's
+  // ends it tapers back into the hill instead of stopping in a wall.
+  const side = smoothstep(hw, hw + 3, Math.abs(v));
+  const backW = side * (1 + Math.abs(h - hole.y) * 1.9);
+  if (u <= -0.6 - backW) return h;
+  const back = u >= -0.6 ? 1 : backW > 0.01 ? smoothstep(-0.6 - backW, -0.6, u) : 0;
   // Blend widths grow with how far the yard is cut into (or built out from) the hill, so the sides
   // are grassy slopes rather than walls.
   // (Blends stay inside the hole's reach, or they'd end in a wall at its edge.)
@@ -630,7 +666,9 @@ function holeYard(hole, dx, dz, h) {
   const spread = 1.2 + Math.abs(h - hole.y) * 1.9;
   const lat = 1 - smoothstep(hw + 0.6, Math.min(hw + Math.max(4, spread), R), Math.abs(v));
   const front = 1 - smoothstep(hole.yard + 0.2, Math.min(hole.yard + Math.max(1.8, spread * 0.8), R), u);
-  return lerp(h, hole.y, lat * front);
+  // And everything fades out before the edge of the hole's reach.
+  const radial = 1 - smoothstep(R - 6, R, Math.hypot(dx, dz));
+  return lerp(h, hole.y, lat * front * back * radial);
 }
 
 /** A hole's turf mound (pass 1), and all of Bag End (last). Mounds only ever raise the ground. */
@@ -639,7 +677,10 @@ function holeMound(hole, dx, dz, h) {
   const v = v0 - hole.center, hw = hole.width / 2;
   if (!hole.arc) {
     if (u > -0.6) return h;
-    return smax(h, hole.y + moundTop(hole, v0, -u) + 0.2, 2.5);
+    // Only where the mound actually is; elsewhere the land behind is left alone.
+    const m = moundTop(hole, v0, -u);
+    if (m <= 0) return h;
+    return lerp(h, smax(h, hole.y + m + 0.2, 2.5), smoothstep(0, 0.8, m));
   }
   // Bag End.
   if (u > -0.6) {
@@ -674,7 +715,7 @@ function makeHole(rand, x, z, fx, fz, y, yard, o) {
     ...spec, x, z, fx, fz, y, yard, color: spec.doorColor, bagEnd: !!o.bagEnd, name: o.name || '', segments: o.segments,
     yaw: Math.atan2(fx, fz),
     veg: !o.bagEnd && rand() < 0.5,
-    reach2: Math.max(yard + 3, spec.width / 2 + 7, 16) ** 2,
+    reach2: Math.max(yard + 8, spec.width / 2 + 12, 22) ** 2,
   };
 }
 
@@ -822,15 +863,15 @@ function nearestOnLanes(x, z, lanes) {
       // Bag End's garden is lawn and flagstones; only the flight of steps is kept clear.
       const a = [hole.x + hole.fx * (hole.terrace + 0.2) + hole.fz * 0.2, hole.z + hole.fz * (hole.terrace + 0.2) - hole.fx * 0.2];
       const b = [hole.x + hole.fx * (hole.yard + 0.4) + hole.fz * 0.2, hole.z + hole.fz * (hole.yard + 0.4) - hole.fx * 0.2];
-      bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, hole.laneY + 0.1], laneHeight, 1);
+      bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, hole.laneY + 0.1], laneHeight, 1, nextLaneId++);
       // A gravel strip under the flagstones from the door to the top of the steps.
       const d0 = [hole.x + hole.fx * 0.6, hole.z + hole.fz * 0.6];
-      bakePolyline([d0, a], 2.3, laneDist, laneWidth, [hole.y + 0.05, hole.y + 0.05], laneHeight, 1);
+      bakePolyline([d0, a], 2.3, laneDist, laneWidth, [hole.y + 0.05, hole.y + 0.05], laneHeight, 1, nextLaneId++);
       continue;
     }
     const a = [hole.x + hole.fx * 1.3, hole.z + hole.fz * 1.3];
     const b = [hole.x + hole.fx * (hole.yard + 1.8), hole.z + hole.fz * (hole.yard + 1.8)];
-    bakePolyline([a, b], hole.bagEnd ? 1.5 : 1.1, laneDist, laneWidth, [hole.y + 0.1, baseHeight(...b) + 0.1], laneHeight, 2);
+    bakePolyline([a, b], hole.bagEnd ? 1.5 : 1.1, laneDist, laneWidth, [hole.y + 0.1, baseHeight(...b) + 0.1], laneHeight, 2, nextLaneId++);
   }
   for (const hole of HOLES) {
     const r = Math.sqrt(hole.reach2);
@@ -879,8 +920,16 @@ export function heightAt(x, z) {
   }
   if (!near.length) return h;
   for (const hole of near) h = holeYard(hole, x - hole.x, z - hole.z, h);
-  for (const hole of near) if (!hole.arc) h = holeMound(hole, x - hole.x, z - hole.z, h);
   for (const hole of near) if (hole.arc) h = holeMound(hole, x - hole.x, z - hole.z, h);
+  // Lanes keep their level (with a steeper bank) through any garden cut beside them...
+  const lane = laneAt(x, z);
+  if (lane && lane.edge < 12 && lane.id >= 0 && lane.id < LANES.length) {
+    const surf = lane.y - 0.1;
+    const bank = Math.min(0.5 + Math.abs(h - surf) * 1.3, 12);
+    h = lerp(surf, h, smoothstep(0, bank, Math.max(lane.edge, 0)));
+  }
+  // ...and the hobbit holes' turf mounds are raised last, so they're always whole.
+  for (const hole of near) if (!hole.arc) h = holeMound(hole, x - hole.x, z - hole.z, h);
   return h;
 }
 

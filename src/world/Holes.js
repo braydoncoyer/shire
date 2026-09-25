@@ -103,7 +103,7 @@ export class HobbitHoles {
     const gate = 0.7;
     // Bag End's front is open: only a short stretch of fence either side of its gate.
     const x0 = hole.segments ? -3.2 : cx - hw - 0.6, x1 = hole.segments ? 3.2 : cx + hw + 0.6;
-    for (const [a, b] of [[x0, -gate], [gate, x1]]) {
+    for (const [a, b] of hole.arc ? [] : [[x0, -gate], [gate, x1]]) {
       if (b - a < 0.3) continue;
       this._fence(B, atG, style, a, b, fz, rand);
       const mid = toWorld((a + b) / 2, fz);
@@ -128,8 +128,8 @@ export class HobbitHoles {
       // The sign hangs on the gate, which stands only slightly ajar.
       this.signs.push(atG(-gate, 0.62, fz, 0, -0.35).multiply(mtx(gate * 0.95, 0, 0.05)));
       // The wattle fence runs on along the whole garden front, following the curve of the lane.
-      this._arcFence(B, hole, arcW, -13.5, -3.2, rand);
-      this._arcFence(B, hole, arcW, 3.2, 10.5, rand);
+      this._arcFence(B, hole, arcW, -13.5, -gate - 0.1, rand, -1);
+      this._arcFence(B, hole, arcW, gate + 0.1, 10.5, rand, 1);
     }
 
     if (hole.arc) this._bagEndGarden(B, hole, at, atG, arcW, rand);
@@ -319,13 +319,17 @@ export class HobbitHoles {
   }
 
   /** Wattle fence along Bag End's curved lane frontage, from arc position v0 to v1. */
-  _arcFence(B, hole, arcW, v0, v1, rand) {
+  _arcFence(B, hole, arcW, v0, v1, rand, dir) {
+    // Built outward from the gate post, stopping for good at the first lane it would touch.
     const u = hole.yard + 0.15;
     let prev = null;
-    for (let v = v0; v <= v1 + 1e-6; v += 0.45) {
+    const vs = [];
+    for (let v = v0; v <= v1 + 1e-6; v += 0.45) vs.push(v);
+    if (dir < 0) vs.reverse();
+    for (const v of vs) {
       const p = arcW(v, u), y = heightAt(p.x, p.z);
-      // Stop where the fence would cross a lane (Bagshot Row curves away from the garden).
-      if (laneMask(p.x, p.z) > 0.05) { prev = null; continue; }
+      const q = arcW(v, u + 0.5);
+      if (laneMask(p.x, p.z) > 0.02 || laneMask(q.x, q.z) > 0.02) break;
       B.add('wood', box(0.05, 0.9, 0.05), mtx(p.x, y + 0.42, p.z, (rand() - 0.5) * 0.08, 0, (rand() - 0.5) * 0.08), WEATHERED);
       if (prev) {
         const len = Math.hypot(p.x - prev.x, p.z - prev.z), yaw = Math.atan2(-(p.z - prev.z), p.x - prev.x);
