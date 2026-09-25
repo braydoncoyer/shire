@@ -11,6 +11,7 @@ import { LAYERS } from '../core/Layers.js';
 import { makeGroundNoiseTexture, makeLaneTexture, makeWaterTexture } from '../util/textures.js';
 
 const INNER_STEP = 1;
+const TILE = 112; // meters per culling tile of the inner mesh
 
 // Heights on the inner grid with a 1-cell border (so normals can use central differences).
 // Also uploaded as a texture so the GPU (grass, flowers) can place things on the ground.
@@ -41,12 +42,6 @@ function buildInnerGeometry({ n, m, H }) {
       nor[k * 3] = nx / l; nor[k * 3 + 1] = ny / l; nor[k * 3 + 2] = nz / l;
     }
   }
-  const idx = [];
-  for (let j = 0; j < n - 1; j++)
-    for (let i = 0; i < n - 1; i++) {
-      const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
-      idx.push(a, c, b, b, c, d);
-    }
   // Skirt: walk the boundary and drop a curtain of vertices 3 m below each edge vertex.
   const ring = [];
   for (let i = 0; i < n - 1; i++) ring.push(i);
@@ -60,17 +55,45 @@ function buildInnerGeometry({ n, m, H }) {
     nor[v * 3] = nor[k * 3]; nor[v * 3 + 1] = nor[k * 3 + 1]; nor[v * 3 + 2] = nor[k * 3 + 2];
     v++;
   }
+  const skirtIdx = [];
   for (let r = 0; r < ring.length; r++) {
     const a = ring[r], b = ring[(r + 1) % ring.length];
     const sa = skirtStart + r, sb = skirtStart + ((r + 1) % ring.length);
-    idx.push(a, b, sa, b, sb, sa, a, sa, b, b, sa, sb); // both windings; skirt is seen from outside
+    skirtIdx.push(a, b, sa, b, sb, sa, a, sa, b, b, sa, sb); // both windings; skirt is seen from outside
   }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.BufferAttribute(pos.subarray(0, v * 3), 3));
-  g.setAttribute('normal', new THREE.BufferAttribute(nor.subarray(0, v * 3), 3));
-  g.setIndex(idx);
-  g.computeBoundingSphere();
-  return g;
+  // Tiles share the vertex buffers, each with its own index and bounds so views cull them.
+  const position = new THREE.BufferAttribute(pos.subarray(0, v * 3), 3);
+  const normal = new THREE.BufferAttribute(nor.subarray(0, v * 3), 3);
+  const make = (idx) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', position);
+    g.setAttribute('normal', normal);
+    g.setIndex(idx);
+    let minY = Infinity, maxY = -Infinity, minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const k of idx) {
+      const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    g.boundingBox = new THREE.Box3(new THREE.Vector3(minX, minY, minZ), new THREE.Vector3(maxX, maxY, maxZ));
+    g.boundingSphere = g.boundingBox.getBoundingSphere(new THREE.Sphere());
+    return g;
+  };
+  const tiles = [];
+  const T = TILE / INNER_STEP;
+  for (let j0 = 0; j0 < n - 1; j0 += T)
+    for (let i0 = 0; i0 < n - 1; i0 += T) {
+      const idx = [];
+      for (let j = j0; j < Math.min(j0 + T, n - 1); j++)
+        for (let i = i0; i < Math.min(i0 + T, n - 1); i++) {
+          const a = j * n + i, b = a + 1, c = a + n, d = c + 1;
+          idx.push(a, c, b, b, c, d);
+        }
+      tiles.push(make(idx));
+    }
+  tiles.push(make(skirtIdx));
+  return tiles;
 }
 
 function buildOuterGeometry() {
@@ -183,8 +206,11 @@ export class Terrain {
     this.heightTex = new THREE.DataTexture(this.heights.H, this.heights.m, this.heights.m, THREE.RedFormat, THREE.FloatType);
     this.heightTex.magFilter = this.heightTex.minFilter = THREE.NearestFilter;
     this.heightTex.needsUpdate = true;
-    this.inner = new THREE.Mesh(buildInnerGeometry(this.heights), this.material);
-    this.inner.layers.set(LAYERS.TERRAIN);
+    this.inner = buildInnerGeometry(this.heights).map((g) => {
+      const m = new THREE.Mesh(g, this.material);
+      m.layers.set(LAYERS.TERRAIN);
+      return m;
+    });
     // A 2 m proxy casts the terrain's shadows, sunk a little so it never shadows the real surface.
     const H = this.heights, step = 2;
     const pn = Math.floor((H.n - 1) / step) + 1;
@@ -200,7 +226,7 @@ export class Terrain {
     this.shadowProxy.layers.set(LAYERS.SHADOW_ONLY);
     this.shadowProxy.castShadow = true;
     this.outer = new THREE.Mesh(buildOuterGeometry(), this.material);
-    for (const m of [this.inner, this.outer]) {
+    for (const m of [...this.inner, this.outer]) {
       m.receiveShadow = true;
       m.castShadow = false;
       this.group.add(m);

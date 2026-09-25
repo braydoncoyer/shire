@@ -95,11 +95,18 @@ export class Lighting {
     light.intensity = I;
     light.position.set(dir[0] * 200, dir[1] * 200, dir[2] * 200);
     light.target.position.set(0, 0, 0);
-    // Render the cascades once per frame; the water reflection pass reuses them.
-    for (const l of this.csm.lights) {
+    // Render the cascades at most once per frame (the water reflection pass reuses them). The two
+    // near cascades update every frame; the two far ones, where a frame's lag can't be seen, take
+    // turns. A cascade that skips a frame keeps the matrix it was drawn with, so it stays aligned.
+    // Small detail (shrubs, fences, steps) is left out of the far cascades. All four render on the
+    // first frames: a map first drawn after the scene has sampled it gets reallocated under bind
+    // groups that still point at the old texture.
+    this.frame = (this.frame || 0) + 1;
+    this.csm.lights.forEach((l, i) => {
       l.shadow.autoUpdate = false;
-      l.shadow.needsUpdate = true;
-    }
+      l.shadow.needsUpdate = i < 2 || this.frame < 4 || this.frame % 2 === i - 2;
+      if (i >= 2) l.shadow.camera.layers.disable(LAYERS.DETAIL);
+    });
 
     // Auto exposure from the expected brightness of a mid-grey lit surface. Adaptation is only
     // partial (the 0.8 power), like an eye: noon still reads brighter than dusk, and night darker.

@@ -179,7 +179,7 @@ export class Buildings {
       if (k % 2 === 0) for (const sd of [-1, 1]) wheelB.add('wood', box(R * 2 * 0.98, 0.1, 0.08), mtx(0, 0, sd * width / 2, 0, 0, a), TIMBER);
     }
     wheelB.add('metal', cylinder(0.14, 0.14, width + 1.4, 10), mtx(0, 0, 0, Math.PI / 2), 0x3a3632);
-    this.wheel = wheelB.build(this.mats);
+    this.wheel = wheelB.build(this.mats, 1e6); // one piece: it turns as a whole
     const axleY = M.water - M.y + R - 0.45; // bottom paddles dip into the water
     this.wheel.matrixAutoUpdate = false;
     this.wheelBase = base.clone().multiply(mtx(-2, axleY, -D / 2 - width / 2 - 0.35, 0, Math.PI / 2, 0));

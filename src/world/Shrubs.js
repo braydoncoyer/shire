@@ -3,6 +3,7 @@
 // from its center, drawn instanced with the trees' leaf material.
 
 import * as THREE from 'three/webgpu';
+import { chunk } from './Chunks.js';
 import { mulberry32 } from '../util/noise.js';
 import { heightAt } from './Layout.js';
 
@@ -79,20 +80,23 @@ export class Shrubs {
   build() {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     for (const kind of Object.keys(KINDS)) {
+      const K = KINDS[kind];
+      const mat = this.veg.leafMaterial(K.tex, K.tint, true);
       for (let variant = 0; variant < 2; variant++) {
-        const list = this.items.filter((it, i) => it.kind === kind && i % 2 === variant);
-        if (!list.length) continue;
-        const K = KINDS[kind];
-        const mat = this.veg.leafMaterial(K.tex, K.tint, true);
-        const mesh = new THREE.InstancedMesh(cloud(kind, 91 + variant * 17 + kind.length * 3), mat, list.length);
-        list.forEach((it, i) => {
-          m.compose(p.set(it.x, it.y - 0.08, it.z), q.setFromAxisAngle(up, it.rot), s.setScalar(it.scale));
-          mesh.setMatrixAt(i, m);
-        });
-        mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16);
-        mesh.castShadow = mesh.receiveShadow = true;
-        mesh.computeBoundingSphere();
-        this.group.add(mesh);
+        const all = this.items.filter((it, i) => it.kind === kind && i % 2 === variant);
+        if (!all.length) continue;
+        const geo = cloud(kind, 91 + variant * 17 + kind.length * 3);
+        for (const list of chunk(all, (it) => [it.x, it.z], 200).values()) {
+          const mesh = new THREE.InstancedMesh(geo, mat, list.length);
+          list.forEach((it, i) => {
+            m.compose(p.set(it.x, it.y - 0.08, it.z), q.setFromAxisAngle(up, it.rot), s.setScalar(it.scale));
+            mesh.setMatrixAt(i, m);
+          });
+          mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16);
+          mesh.castShadow = mesh.receiveShadow = true;
+          mesh.computeBoundingSphere();
+          this.group.add(mesh);
+        }
       }
     }
     return this.group;

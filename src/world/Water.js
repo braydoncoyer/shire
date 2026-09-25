@@ -1,24 +1,24 @@
 // Water: the lake and the stream.
 //
 // The lake gets a planar reflection (trees, the Hill and the far bank, grass excluded for speed),
-// distorted by wind ripples. Below the surface, the scene behind the water is refracted and tinted
-// by depth, so the shallows show the lakebed and the edge fades into the shore instead of cutting
-// a hard line. A sun glitter term sparkles on the ripples.
+// distorted by wind ripples. The surface is blended over the lakebed by its depth (from the ground
+// height map), so the shallows show the bed and the edge fades into the shore instead of cutting a
+// hard line. A sun glitter term sparkles on the ripples.
 //
 // The stream is a ribbon mesh along its bed whose ripples scroll downstream at the flow speed.
 
 import * as THREE from 'three/webgpu';
 import {
-  Fn, texture, uniform, positionWorld, positionView, cameraPosition, screenUV, vec2, vec3, vec4, float,
-  normalize, reflect, dot, max, pow, mix, saturate, smoothstep, exp, reflector, uv,
-  viewportDepthTexture, viewportSharedTexture, perspectiveDepthToViewZ, cameraNear, cameraFar,
+  Fn, texture, uniform, positionWorld, cameraPosition, vec2, vec3, vec4, float,
+  normalize, reflect, dot, max, pow, saturate, smoothstep, exp, reflector, uv,
 } from 'three/tsl';
 import { LAYERS } from '../core/Layers.js';
 import { WATER_Y, STREAMS, LAKE_SDF, POND_SDF, POND_Y, streamWaterAt } from './Layout.js';
 
 export class Water {
-  constructor(sky, noiseTex) {
+  constructor(sky, noiseTex, maps) {
     this.sky = sky;
+    this.maps = maps;
     this.noise = noiseTex;
     this.time = uniform(0);
     this.windStrength = uniform(0.5);
@@ -101,7 +101,10 @@ export class Water {
 
   _material({ reflection, flow }) {
     const sky = this.sky, u = sky.u;
-    const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    // Blended over the lakebed rather than refracting a copy of the frame: sampling the frame
+    // mid-pass forces a resolve and copy of the whole multisampled target, which costs more than
+    // the rest of the water put together. Premultiplied, so the sun glints add on top.
+    const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, premultipliedAlpha: true });
     m.colorNode = Fn(() => {
       // Ripple coordinates: world xz for the lake; along/across the ribbon for the stream,
       // scrolled downstream so the surface visibly flows.
@@ -111,17 +114,16 @@ export class Water {
       const cosT = saturate(dot(v.negate(), n));
       const fres = float(0.02).add(float(0.98).mul(pow(float(1).sub(cosT), 5))).toVar();
 
-      // Depth of water along the view ray, from the depth buffer behind the surface.
-      const sceneZ = perspectiveDepthToViewZ(viewportDepthTexture(screenUV), cameraNear, cameraFar);
-      const depth = max(positionView.z.sub(sceneZ), 0).toVar();
+      // Water depth under this point from the ground height map, and the path length of the view
+      // ray through it.
+      const depth = max(positionWorld.y.sub(this.maps.height(positionWorld.xz)), 0).toVar();
       const edge = smoothstep(0.0, 0.35, depth);
+      const path = depth.div(max(v.y.negate(), 0.15));
 
-      // Refraction: the lakebed seen through the water, absorbed toward deep green-brown.
-      const ruv = screenUV.add(n.xz.mul(0.025).mul(saturate(depth)));
-      const behind = viewportSharedTexture(ruv).rgb;
-      const absorb = exp(vec3(0.55, 0.22, 0.28).mul(depth).mul(-0.6));
+      // The lakebed shows through by its transmittance, absorbed toward deep green-brown.
+      const absorbV = exp(vec3(0.55, 0.22, 0.28).mul(path).mul(-0.6));
+      const absorb = absorbV.g.mul(0.5).add(absorbV.r.mul(0.2)).add(absorbV.b.mul(0.3));
       const deep = vec3(0.012, 0.035, 0.03).mul(u.ambTop.g.mul(1.5).add(u.sunColor.g.mul(0.04)));
-      const under = mix(deep, behind, absorb);
 
       // Reflection: the planar reflection for the lake, the sky for the stream.
       const rdir = reflect(v, n);
@@ -132,8 +134,9 @@ export class Water {
       }
       const glint = pow(saturate(dot(rdir, u.sunDir)), 700).mul(60)
         .add(pow(saturate(dot(rdir, u.sunDir)), 80).mul(0.6));
-      const col = mix(under, refl, fres).add(u.sunColor.mul(glint).mul(edge));
-      return vec4(col, edge);
+      const through = float(1).sub(fres).mul(absorb);
+      const col = deep.mul(float(1).sub(fres)).mul(float(1).sub(absorb)).add(refl.mul(fres)).add(u.sunColor.mul(glint));
+      return vec4(col.mul(edge), float(1).sub(through).mul(edge));
     })();
     return m;
   }

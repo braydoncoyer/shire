@@ -3,6 +3,7 @@
 // matrix; vertex colors carry per-piece tints (door paint, stone warmth, lit windows).
 
 import * as THREE from 'three/webgpu';
+import { chunk } from './Chunks.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   Fn, uv, vec2, vec3, float, mix, smoothstep, fract, abs, sin, attribute, color, texture, positionWorld,
@@ -204,16 +205,24 @@ export class Builder {
     (this.parts[mat] ||= []).push(g);
   }
 
-  build(materials) {
+  /** Merge into one mesh per material and chunk (see Chunks.js). */
+  build(materials, cell = 160) {
     const group = new THREE.Group();
     for (const [mat, list] of Object.entries(this.parts)) {
-      const geo = mergeGeometries(list, false);
-      geo.computeBoundingSphere();
-      const mesh = new THREE.Mesh(geo, materials[mat]);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.name = mat;
-      group.add(mesh);
+      const cells = chunk(list, (g) => {
+        g.computeBoundingBox();
+        const b = g.boundingBox;
+        return [(b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2];
+      }, cell);
+      for (const part of cells.values()) {
+        const geo = mergeGeometries(part, false);
+        geo.computeBoundingSphere();
+        const mesh = new THREE.Mesh(geo, materials[mat]);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.name = mat;
+        group.add(mesh);
+      }
     }
     return group;
   }

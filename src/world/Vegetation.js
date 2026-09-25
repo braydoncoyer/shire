@@ -15,6 +15,7 @@ import {
   GREEN_DRAGON, HOLES, GEO, VILLAGE,
 } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
+import { chunk } from './Chunks.js';
 
 const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1, partyPine: 1 };
 
@@ -183,26 +184,31 @@ export class Vegetation {
         const list = this.trees.filter((t) => t.species === species && t.variant === v);
         if (!list.length) continue;
         const model = buildTree(species, 1000 + v * 37 + species.length * 101);
-        const wood = new THREE.InstancedMesh(model.wood, this._woodMaterial(), list.length);
-        const leaves = new THREE.InstancedMesh(model.leaves, this._leafMaterial(species), list.length);
+        const woodMat = this._woodMaterial(), leafMat = this._leafMaterial(species);
         const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-        list.forEach((t, i) => {
-          p.set(t.x, heightAt(t.x, t.z), t.z);
-          q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot);
-          s.setScalar(t.scale);
-          m.compose(p, q, s);
-          wood.setMatrixAt(i, m);
-          leaves.setMatrixAt(i, m);
+        for (const t of list)
           if (Math.hypot(t.x, t.z) < WALK_RADIUS + 10) this.colliders.push({ x: t.x, z: t.z, r: model.trunkRadius * t.scale + 0.15 });
-        });
-        for (const mesh of [wood, leaves]) {
-          // Storage-buffer matrices upload once; small counts would otherwise go through a uniform
-          // buffer that Three.js re-uploads on every render pass.
-          mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          mesh.computeBoundingSphere();
-          this.group.add(mesh);
+        // One instanced pair per chunk, so each view culls the trees it can't see.
+        for (const part of chunk(list, (t) => [t.x, t.z], 160).values()) {
+          const wood = new THREE.InstancedMesh(model.wood, woodMat, part.length);
+          const leaves = new THREE.InstancedMesh(model.leaves, leafMat, part.length);
+          part.forEach((t, i) => {
+            p.set(t.x, heightAt(t.x, t.z), t.z);
+            q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot);
+            s.setScalar(t.scale);
+            m.compose(p, q, s);
+            wood.setMatrixAt(i, m);
+            leaves.setMatrixAt(i, m);
+          });
+          for (const mesh of [wood, leaves]) {
+            // Storage-buffer matrices upload once; small counts would otherwise go through a uniform
+            // buffer that Three.js re-uploads on every render pass.
+            mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(mesh.instanceMatrix.array, 16);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.computeBoundingSphere();
+            this.group.add(mesh);
+          }
         }
       }
     }

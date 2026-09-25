@@ -19,6 +19,19 @@ import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 
+// The shadow passes draw everything with one shared depth material, copying each mesh's alphaTest
+// onto it. Material's setter bumps the version whenever alphaTest crosses zero, and a version change
+// makes Three.js rebuild the cache key of every later draw with that material: thousands per frame.
+// Each draw's pipeline already bakes in its own alphaTest when first built, so the bump is unneeded.
+const alphaTest = Object.getOwnPropertyDescriptor(THREE.Material.prototype, 'alphaTest');
+Object.defineProperty(THREE.Material.prototype, 'alphaTest', {
+  ...alphaTest,
+  set(v) {
+    if (this.isShadowPassMaterial) this._alphaTest = v;
+    else alphaTest.set.call(this, v);
+  },
+});
+
 export class App {
   async init(container, progress) {
     this.settings = new Settings();
@@ -48,12 +61,12 @@ export class App {
     await tick();
     this.terrain = new Terrain();
     scene.add(this.terrain.group);
-    this.water = new Water(this.sky, this.terrain.groundNoise);
+    this.maps = new GroundMaps(this.terrain);
+    this.water = new Water(this.sky, this.terrain.groundNoise, this.maps);
     scene.add(this.water.group);
 
     progress('Growing the grass');
     await tick();
-    this.maps = new GroundMaps(this.terrain);
     this.grass = new Grass(this.maps, this.sky);
     scene.add(this.grass.group);
     for (const l of [LAYERS.NO_REFLECT, LAYERS.DETAIL, LAYERS.TERRAIN]) camera.layers.enable(l);
@@ -78,6 +91,11 @@ export class App {
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
+    // Alpha-tested meshes (leaves, thatch fringe) draw after the opaque ones, which also lets the
+    // GPU's hidden-surface removal cull more of what's behind them.
+    scene.traverse((o) => {
+      if (o.isMesh && o.material?.alphaTest > 0) o.renderOrder = 1;
+    });
 
 
     this.input = new Input(renderer.domElement);
@@ -113,6 +131,12 @@ export class App {
   }
 
   frame() {
+    // In the background (window not focused), idle along at a few frames a second to save power.
+    if (!this.settings.shot && !document.hasFocus()) {
+      const now = performance.now();
+      if (now - (this.idleAt || 0) < 200) return;
+      this.idleAt = now;
+    }
     this.clock.update();
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const s = this.settings;

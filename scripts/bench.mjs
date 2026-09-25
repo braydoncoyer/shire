@@ -11,23 +11,26 @@ const browser = await puppeteer.launch({
 });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
-await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 });
-await page.goto(`http://127.0.0.1:5190/?shot&${q}`);
+await page.setViewport({ width: W, height: H, deviceScaleFactor: +(process.env.DPR || 1) });
+await page.goto(`http://127.0.0.1:${process.env.PORT || 5190}/?shot&${q}`);
 await page.waitForFunction('window.shireReady === true', { timeout: 120000 });
 await new Promise((r) => setTimeout(r, 1500));
 const measure = () => page.evaluate(() => new Promise((r) => {
   let n = 0; const t0 = performance.now();
-  const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else r((performance.now() - t0) / n); };
+  const f = () => { n++; if (performance.now() - t0 < +(window.BENCH_MS || 2000)) requestAnimationFrame(f); else r((performance.now() - t0) / n); };
   requestAnimationFrame(f);
 }));
 const list = variants.length ? variants : ['default='];
 const res = {};
-for (let pass = 0; pass < 2; pass++)
+for (let pass = 0; pass < +(process.env.PASSES || 2); pass++)
   for (const v of list) {
     const [label, ...js] = v.split('=');
     await page.evaluate(js.join('='));
     await new Promise((r) => setTimeout(r, 300));
     (res[label] ||= []).push(await measure());
   }
-for (const [k, v] of Object.entries(res)) console.log(`${k.padEnd(14)} ${v.map((x) => x.toFixed(2) + ' ms').join('  ')}`);
+for (const [k, v] of Object.entries(res)) {
+  const med = [...v].sort((a, b) => a - b)[v.length >> 1];
+  console.log(`${k.padEnd(14)} med ${med.toFixed(2).padStart(6)} ms   ${v.map((x) => x.toFixed(1)).join(' ')}`);
+}
 await browser.close();

@@ -37,5 +37,5 @@ for (let i = 0; i < args.length; i += 2) {
   console.log(`${name}: ${((Date.now() - t0) / 1000).toFixed(1)}s ${fps}`);
 }
 const errs = logs.filter((l) => /error|warn/i.test(l));
-if (errs.length) console.log(errs.slice(0, 30).join('\n'));
+if (errs.length) console.log(`${errs.length} errors/warnings\n` + errs.slice(0, +(process.env.ERRS ?? 30)).join('\n'));
 await browser.close();
