@@ -67,6 +67,8 @@ export class App {
     await tick();
     this.mats = makeMaterials(this.sky, this.terrain.groundNoise);
     this.shrubs = new Shrubs(this.vegetation);
+    this.greenDragon = new GreenDragon(this.mats, this.shrubs);
+    scene.add(this.greenDragon.group);
     this.holes = new HobbitHoles(this.mats, this.shrubs);
     scene.add(this.holes.group);
     this.boundaries = new Boundaries(this.mats, this.shrubs);
@@ -76,8 +78,7 @@ export class App {
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
-    this.greenDragon = new GreenDragon(this.mats);
-    scene.add(this.greenDragon.group);
+
 
     this.input = new Input(renderer.domElement);
     this.player = new Player(camera, this.input);

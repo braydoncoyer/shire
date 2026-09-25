@@ -114,6 +114,14 @@ export function makeMaterials(sky, noiseTex) {
     return vec4(mix(color(0x2f5a16), color(0x86a83a), strandTex.r).mul(vcol), a);
   })();
 
+  // Straw fringe: the ragged hanging ends of thatch along the eaves.
+  const straw = new THREE.MeshLambertNodeMaterial({ side: THREE.DoubleSide, alphaTest: 0.5 });
+  straw.alphaToCoverage = true;
+  straw.colorNode = Fn(() => {
+    const a = saturate(strandTex.a.sub(0.45).div(max(fwidth(strandTex.a), 1e-4)).add(0.5));
+    return vec4(mix(color(0x3a3228), color(0x8a7858), strandTex.r), a);
+  })();
+
   const metal = new THREE.MeshStandardNodeMaterial({ roughness: 0.35, metalness: 1 });
   metal.colorNode = vcol;
 
@@ -129,7 +137,7 @@ export function makeMaterials(sky, noiseTex) {
     return lampWarm.mul(lit).mul(smoothstep(0.05, 0.6, night)).mul(0.11).mul(grid).mul(flicker.mul(0.08).add(0.95));
   })();
 
-  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster, thatch, turf, fringe };
+  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster, thatch, turf, fringe, straw };
   mats.flicker = flicker;
   return mats;
 }
@@ -380,6 +388,14 @@ export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 1
       idx.push(a, c, b, b, c, e);
       ks.forEach((k, q) => { if (D[k] > -res * 1.5) edgeVerts.add([a, b, c, e][q]); });
     }
+  // Coursed, lumpy thatch: each course of straw bundles steps out a little, plus random swelling.
+  for (let v = 0; v < pos.length / 3; v++) {
+    const x = pos[v * 3], z = pos[v * 3 + 2];
+    const d = -(polyDist(p, x, z) - overhang);
+    const course = (d / 0.75) % 1;
+    const lump = Math.sin(x * 1.7 + Math.sin(z * 0.9) * 2) * Math.sin(z * 1.3 + x * 0.4) * 0.09;
+    pos[v * 3 + 1] += (1 - course) * 0.1 + lump;
+  }
   // Thick lip: drop the outermost ring of vertices a little so the eave curls down.
   for (const v of edgeVerts) {
     const x = pos[v * 3], z = pos[v * 3 + 2];

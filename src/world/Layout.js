@@ -73,12 +73,55 @@ function demWeight(g, x, z, margin) {
   const ez = Math.min(z - g.z0, g.z0 + (g.nz - 1) * g.step - z);
   return smoothstep(0, margin, Math.min(ex, ez));
 }
-function demHeight(x, z) {
+// The 8 m survey smooths the set's hand-sculpted banks into a gentle slope; on site (and on film)
+// the Hill reads much steeper. Relief above the lake is exaggerated to match photographs.
+const RELIEF = 1.4;
+let GD_BANK = null; // set once the Green Dragon is placed
+
+function rawDEM(x, z) {
   const wSet = demWeight(DEM_SET, x, z, 40);
   const wide = DEM_WIDE ? sampleDEM(DEM_WIDE, x, z) : 0;
   if (wSet <= 0) return wide;
   const set = sampleDEM(DEM_SET, x, z);
   return lerp(wide, set, wSet);
+}
+function demHeight(x, z) {
+  const h = rawDEM(x, z);
+  return h > WATER_Y ? WATER_Y + (h - WATER_Y) * RELIEF : h;
+}
+
+/**
+ * The set dressing no survey captures: the hillside cut into level terraces with steep grassy
+ * banks between them, and Bag End's knoll rising steeply under the oak.
+ */
+function sculpt(x, z, h) {
+  // Terraces across the village: flat benches (60% of each rise) and steep banks.
+  const vx = x - (beX + 45), vz = z - (beZ + 35);
+  const village = 1 - smoothstep(95, 150, Math.hypot(vx * 0.85, vz));
+  const shore = smoothstep(6, 22, lakeDist(x, z));
+  // Only the ground the village is built on is terraced; open slopes between lanes stay natural.
+  const near = 1 - smoothstep(9, 22, sampleGrid(laneDist, x, z, 99));
+  const w = village * shore * near * 0.8;
+  if (w > 0.001 && h > FIELD_Y - 2) {
+    const T = 3.2;
+    // Wobble the terrace lines so they follow the land rather than exact contours.
+    const hh = h + fbm2(x / 45, z / 45, 2) * 1.2;
+    const f = hh / T, i = Math.floor(f), t = f - i;
+    const stepped = (i + smoothstep(0.55, 0.95, t)) * T - fbm2(x / 45, z / 45, 2) * 1.2;
+    h = lerp(h, stepped, w * 0.85);
+  }
+  // The steep grassy bank that rises behind the Green Dragon (away from the bridge), with its
+  // paddock fences along the top.
+  if (GD_BANK) {
+    const dx = x - GD_BANK.x, dz = z - GD_BANK.z;
+    const back = -(dx * GD_BANK.fx + dz * GD_BANK.fz), side = dx * GD_BANK.fz - dz * GD_BANK.fx;
+    const dp = polyDistSimple(GD_BANK.poly, x, z);
+    h += 17 * smoothstep(5, 30, dp) * smoothstep(-6, 8, back) * (1 - smoothstep(40, 80, Math.abs(side)));
+  }
+  // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
+  const kd = Math.hypot(x - oakX, z - oakZ);
+  h += 7.5 * Math.exp(-((kd / 17) ** 2.2));
+  return h;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -294,6 +337,13 @@ export const GREEN_DRAGON = (() => {
   };
 })();
 
+{
+  // "Behind" = away from the bridge, whichever way the inn's long walls run.
+  const bx = BRIDGE.x + BRIDGE.dx * BRIDGE.half, bz = BRIDGE.z + BRIDGE.dz * BRIDGE.half;
+  const fx = bx - GREEN_DRAGON.x, fz = bz - GREEN_DRAGON.z, l = Math.hypot(fx, fz);
+  GD_BANK = { x: GREEN_DRAGON.x, z: GREEN_DRAGON.z, fx: fx / l, fz: fz / l, poly: GREEN_DRAGON.poly };
+}
+
 // Level pads for buildings, applied last in heightAt.
 const PADS = [
   { x: MILL.x, z: MILL.z, r0: 9, r1: 13, y: MILL.y },
@@ -305,7 +355,7 @@ const PADS = [
 // Height (without hobbit holes yet; they're dug below once placed)
 
 function naturalHeight(x, z) {
-  let h = demHeight(x, z);
+  let h = sculpt(x, z, demHeight(x, z));
   // The DEM is 8 m data: add the small undulations of sheep-grazed pasture.
   h += fbm2(x / 34 + 11, z / 34 - 4, 3) * 0.45 + fbm2(x / 9, z / 9, 2) * 0.08;
 
@@ -462,7 +512,7 @@ function nearestOnLanes(x, z, lanes) {
     let fx = lane.x - beX, fz = lane.z - beZ;
     const l = Math.hypot(fx, fz); fx /= l; fz /= l;
     const laneY = baseHeight(lane.x, lane.z);
-    HOLES.push(makeHole(rand, beX, beZ, fx, fz, laneY + 1.1, Math.max(3.2, l - 1.9), {
+    HOLES.push(makeHole(rand, beX, beZ, fx, fz, laneY + 1.9, Math.max(3.2, l - 1.9), {
       bagEnd: true, name: 'Bag End', doorColor: 0x2f6b3a, knob: 'center', plaster: 0xd9ad4f, frame: 0x2f6b3a, arch: 'brick',
       windowStyle: 'grid', doorR: 1.02, lit: true, fence: 'wattle',
       bays: [{ kind: 'window', w: 1.5 }, { kind: 'door', w: 2.9 }, { kind: 'window', w: 1.5 }, { kind: 'wall', w: 1.2 }, { kind: 'bigwindow', w: 1.9 }, { kind: 'wall', w: 1.0 }, { kind: 'bigwindow', w: 1.8 }],

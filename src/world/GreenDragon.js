@@ -24,14 +24,15 @@ function doorPoints(poly) {
 }
 
 export class GreenDragon {
-  constructor(mats) {
+  constructor(mats, shrubs) {
+    this.shrubs = shrubs;
     this.colliders = [];
     this.lamps = [];
     this.chimneys = [];
     const B = new Builder();
     const G = GREEN_DRAGON;
     this._building(B, G.poly, G.y, { wallH: 2.55, rise: 5.6, reach: 12, doors: true, ochre: true, dormer: true, chimneys: 4 });
-    this._building(B, G.shed, G.shedY, { wallH: 2.1, rise: 3.0, reach: 4.5, doors: true, ochre: false, chimneys: 1 });
+    this._building(B, G.shed, G.shedY, { wallH: 2.3, rise: 3.2, reach: 4.5, doors: true, ochre: false, mixed: true, chimneys: 1 });
     this._forecourt(B);
     this.group = B.build(mats);
   }
@@ -84,7 +85,13 @@ export class GreenDragon {
         if (open.some((q) => c + w / 2 + 0.35 > q.x0 && c - w / 2 - 0.35 < q.x1)) continue;
         open.push({ x0: c - w / 2, x1: c + w / 2, y0: 0.9, y1: 1.75, round: o.ochre && k % 3 === 1 });
       }
-      wall(B, wallMat, at, 0, e.len, 0, 0, H, T, open, wallTint);
+      if (o.mixed) {
+        // Fieldstone to waist height, ochre plaster above.
+        const sill = 1.0;
+        wall(B, 'stone', at, 0, e.len, 0, 0, sill, T, open.map((q) => ({ ...q, y1: Math.min(q.y1, sill + 5) })), STONE);
+        wall(B, 'plaster', at, 0, e.len, 0, sill, H - sill, T, open.map((q) => ({ ...q, y0: Math.max(0, q.y0 - sill), y1: q.y1 - sill })), OCHRE);
+        B.add('wood', box(e.len + 0.1, 0.16, 0.08), at(e.len / 2, sill, T / 2 + 0.04), TIMBER);
+      } else wall(B, wallMat, at, 0, e.len, 0, 0, H, T, open, wallTint);
 
       if (o.ochre) {
         // Timber frame: sole plate, wall plate, posts, and cross braces in plain panels.
@@ -149,6 +156,20 @@ export class GreenDragon {
     // Thatch over the whole footprint.
     const roof = footprintRoof(poly, { eaveY: y + H - 0.2, overhang: 1.1, rise: o.rise, reach: o.reach, lip: 0.75 });
     B.add('thatch', roof, new THREE.Matrix4(), 0xffffff);
+    // Ragged straw ends hanging from the eaves.
+    let seed = Math.floor(y * 1000) + poly.length;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (const e of edges) {
+      const ex = (e.b[0] - e.a[0]) / e.len, ez = (e.b[1] - e.a[1]) / e.len;
+      for (let t = -0.8; t < e.len + 0.8; t += 0.32) {
+        const px = e.a[0] + ex * t + e.n[0] * 1.12, pz = e.a[1] + ez * t + e.n[1] * 1.12;
+        const len = 0.3 + rnd() * 0.25;
+        const card = new THREE.PlaneGeometry(0.5, len).translate(0, -len / 2, 0);
+        const m = new THREE.Matrix4().makeBasis(new THREE.Vector3(ex, 0, ez), new THREE.Vector3(0, 1, 0), new THREE.Vector3(e.n[0], 0, e.n[1]))
+          .setPosition(px, y + H - 0.2 - 0.55, pz).multiply(mtx(0, 0, 0, 0.35 + rnd() * 0.3, (rnd() - 0.5) * 0.4, 0));
+        B.add('straw', card, m, 0xffffff);
+      }
+    }
 
     // Dormer over the main door: a little gable with a round window, its own thatch hood.
     if (o.dormer && mainDoor) {
@@ -187,6 +208,7 @@ export class GreenDragon {
   }
 
   _forecourt(B) {
+    const shrubs = this.shrubs;
     // Cobbles in front of the main door, benches and tables on the lawn, the lamp post, the sign.
     const G = GREEN_DRAGON;
     const doors = doorPoints(cleanPoly(G.poly));
@@ -213,6 +235,36 @@ export class GreenDragon {
     B.add('metal', box(0.26, 0.36, 0.26), at(2.4, 2.85, 7.8), 0x2a2622);
     B.add('glass', box(0.18, 0.26, 0.18), at(2.4, 2.85, 7.8), 0xff0000);
     this.lamps.push(new THREE.Vector3(2.4, 2.85, 7.8).applyMatrix4(base));
+
+    // Lanterns on posts along the path from the bridge, alternating sides.
+    const L = Math.hypot(bx - dx, bz - dz);
+    for (let d = 9, k = 0; d < L - 2; d += 5.5, k++) {
+      const side = k % 2 ? 1 : -1;
+      const m = at(side * 1.9, 0, d);
+      B.add('wood', box(0.12, 1.5, 0.12), m.clone().multiply(mtx(0, 0.75, 0)), TIMBER);
+      B.add('metal', box(0.2, 0.28, 0.2), m.clone().multiply(mtx(0, 1.62, 0)), 0x2a2622);
+      B.add('glass', box(0.14, 0.2, 0.14), m.clone().multiply(mtx(0, 1.62, 0)), 0xff0000);
+      this.lamps.push(new THREE.Vector3(side * 1.9, 1.62, d).applyMatrix4(base));
+    }
+
+    // Flower beds and shrubs along the inn's walls, and clumps by the forecourt.
+    if (shrubs) {
+      const edges = polyEdges(cleanPoly(G.poly), G.y);
+      const kinds = ['hydrangea', 'roses', 'marigold', 'yellow', 'bush', 'broad'];
+      for (const e of edges) {
+        const ex = (e.b[0] - e.a[0]) / e.len, ez = (e.b[1] - e.a[1]) / e.len;
+        for (let t = 0.8; t < e.len - 0.6; t += 1.3 + rnd() * 1.2) {
+          const px = e.a[0] + ex * t + e.n[0] * 0.9, pz = e.a[1] + ez * t + e.n[1] * 0.9;
+          if (Math.hypot(px - dx, pz - dz) < 2.2) continue; // keep the main door clear
+          if (rnd() < 0.25) continue;
+          shrubs.add(kinds[Math.floor(rnd() * kinds.length)], px, pz, 0.55 + rnd() * 0.35, rnd() * 6.28, G.y);
+        }
+      }
+      for (const [x, z] of [[-4.2, 3.2], [4.2, 3.4], [-3.6, 8.5], [5.2, 9.5]]) {
+        const p = new THREE.Vector3(x, 0, z).applyMatrix4(base);
+        shrubs.add(kinds[Math.floor(rnd() * 4)], p.x, p.z, 0.8, rnd() * 6.28, G.y);
+      }
+    }
     // The hanging sign on a post by the door.
     B.add('wood', box(0.14, 2.8, 0.14), at(-2.8, 1.4, 1.4), TIMBER);
     B.add('wood', box(0.06, 0.08, 1.0), at(-2.8, 2.7, 1.9), TIMBER);
