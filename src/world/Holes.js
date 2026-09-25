@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box, cylinder } from './Kit.js';
 import { buildFacade } from './HoleModel.js';
-import { HOLES, heightAt, laneMask } from './Layout.js';
+import { HOLES, heightAt, laneMask, LANES } from './Layout.js';
 import { mulberry32 } from '../util/noise.js';
 
 const TIMBER = 0x5c4330, WEATHERED = 0x7d6e5a, WILLOW = 0x8a7550;
@@ -128,8 +128,7 @@ export class HobbitHoles {
       // The sign hangs on the gate, which stands only slightly ajar.
       this.signs.push(atG(-gate, 0.62, fz, 0, -0.35).multiply(mtx(gate * 0.95, 0, 0.05)));
       // The wattle fence runs on along the whole garden front, following the curve of the lane.
-      this._arcFence(B, hole, arcW, -13.5, -gate - 0.1, rand, -1);
-      this._arcFence(B, hole, arcW, gate + 0.1, 10.5, rand, 1);
+      this._laneFence(B, hole, toWorld(0, fz), gate, rand);
     }
 
     if (hole.arc) this._bagEndGarden(B, hole, at, atG, arcW, rand);
@@ -314,6 +313,52 @@ export class HobbitHoles {
       for (let v = v0; v < v1; v += 1.5) {
         const p = arcW(v, T + 0.25);
         this.colliders.push({ x: p.x, z: p.z, r: 0.55 });
+      }
+    }
+  }
+
+  /**
+   * Bag End's wattle fence: it runs along the garden side of the lane, at the gate's distance from
+   * the lane's centerline, both ways from the gate until the lane meets another path.
+   */
+  _laneFence(B, hole, gatePt, gate, rand) {
+    let best = null;
+    for (const lane of LANES) {
+      if (!lane.samples) continue;
+      lane.samples.forEach(([x, z], i) => {
+        const d = Math.hypot(x - gatePt.x, z - gatePt.z);
+        if (!best || d < best.d) best = { d, lane, i };
+      });
+    }
+    if (!best) return;
+    const { lane, i: i0 } = best;
+    const pts = lane.samples;
+    const off = Math.max(best.d, lane.width / 2 + 0.35);
+    // Which side of the lane is the garden?
+    const sideAt = (i) => {
+      const [ax, az] = pts[Math.max(0, i - 1)], [bx, bz] = pts[Math.min(pts.length - 1, i + 1)];
+      const l = Math.hypot(bx - ax, bz - az) || 1, nx = -(bz - az) / l, nz = (bx - ax) / l;
+      const s = Math.sign(nx * (hole.x - pts[i][0]) + nz * (hole.z - pts[i][1])) || 1;
+      return [nx * s, nz * s];
+    };
+    for (const dir of [-1, 1]) {
+      let prev = null, walked = 0;
+      for (let i = i0; i >= 0 && i < pts.length && walked < 26; i += dir) {
+        if (i !== i0) walked += Math.hypot(pts[i][0] - pts[i - dir][0], pts[i][1] - pts[i - dir][1]);
+        const [nx, nz] = sideAt(i);
+        const x = pts[i][0] + nx * off, z = pts[i][1] + nz * off;
+        if (Math.hypot(x - gatePt.x, z - gatePt.z) < gate + 0.1) { prev = null; continue; }
+        // Stop where another path joins (the fence would cross it).
+        if (walked > 2 && laneMask(x + nx * 0.4, z + nz * 0.4) > 0.05) break;
+        const y = heightAt(x, z);
+        B.add('wood', box(0.05, 0.9, 0.05), mtx(x, y + 0.42, z, (rand() - 0.5) * 0.08, 0, (rand() - 0.5) * 0.08), WEATHERED);
+        if (prev) {
+          const len = Math.hypot(x - prev.x, z - prev.z), yaw = Math.atan2(-(z - prev.z), x - prev.x);
+          for (let yy = 0.12; yy < 0.75; yy += 0.07)
+            B.add('wood', box(len + 0.04, 0.045, 0.035), mtx((x + prev.x) / 2, (y + prev.y) / 2 + yy, (z + prev.z) / 2, 0, yaw, 0), WILLOW);
+          this.colliders.push({ x: (x + prev.x) / 2, z: (z + prev.z) / 2, hx: len / 2, hz: 0.1, rot: yaw });
+        }
+        prev = { x, z, y };
       }
     }
   }
