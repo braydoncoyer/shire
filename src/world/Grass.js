@@ -119,7 +119,8 @@ function flowerTexture() {
 }
 
 export class Grass {
-  constructor(maps, sky) {
+  constructor(maps, sky, lampLight) {
+    this.lampLight = lampLight;
     this.maps = maps;
     this.sky = sky;
     this.u = {
@@ -308,7 +309,9 @@ export class Grass {
     return Fn(() => {
       const v = normalize(positionWorld.sub(cameraPosition));
       const back = pow(saturate(dot(v, sunU.sunDir)), 6).mul(tipV).mul(k);
-      return colV.mul(sunU.sunColor).mul(back).mul(float(1).sub(smoothstep(0.35, 0.9, sunU.sunDir.y)));
+      const sun = colV.mul(sunU.sunColor).mul(back).mul(float(1).sub(smoothstep(0.35, 0.9, sunU.sunDir.y)));
+      // Lamplight after dark, stronger on the blade tips that catch it.
+      return this.lampLight ? sun.add(this.lampLight.emission(colV.mul(tipV.mul(0.6).add(0.4)), positionWorld)) : sun;
     })();
   }
 

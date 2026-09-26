@@ -20,7 +20,7 @@ export class Post {
     // Bright light sources (lamps, windows) stay in color vision.
     // Indoors, lamplight keeps the eye in color vision.
     this.indoor = uniform(0);
-    const rods = sky.u.night.mul(0.7).mul(float(1).sub(smoothstep(0.25, 1.2, lum))).mul(float(1).sub(this.indoor));
+    const rods = sky.u.night.mul(0.7).mul(float(1).sub(smoothstep(0.06, 0.3, lum))).mul(float(1).sub(this.indoor));
     const graded = mix(lit.rgb, vec3(0.55, 0.72, 1.0).mul(lum), rods);
 
     const mapped = renderOutput(graded);

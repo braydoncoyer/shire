@@ -170,7 +170,8 @@ export function planTrees() {
 }
 
 export class Vegetation {
-  constructor(sky, noiseTex) {
+  constructor(sky, noiseTex, lampLight) {
+    this.lampLight = lampLight;
     this.u = {
       time: uniform(0),
       windDir: uniform(new THREE.Vector3(0.7, 0, -0.7)),
@@ -350,7 +351,8 @@ export class Vegetation {
     m.emissiveNode = Fn(() => {
       const v = normalize(positionWorld.sub(cameraPosition));
       const back = pow(saturate(dot(v, sunU.sunDir)), 4).mul(0.06).mul(float(1).sub(smoothstep(0.4, 0.95, sunU.sunDir.y)));
-      return t.rgb.mul(tint).mul(sunU.sunColor).mul(back);
+      const sun = t.rgb.mul(tint).mul(sunU.sunColor).mul(back);
+      return this.lampLight ? sun.add(this.lampLight.emission(t.rgb.mul(tint), positionWorld)) : sun;
     })();
     return m;
   }

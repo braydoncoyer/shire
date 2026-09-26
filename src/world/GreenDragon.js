@@ -5,7 +5,7 @@
 // eaves sweep low. A gabled dormer with a round window sits over the main door, facing the bridge.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist } from './Kit.js';
+import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist, lantern } from './Kit.js';
 import { GREEN_DRAGON, GEO, BRIDGE } from './Layout.js';
 import { GreenDragonInterior, HALL, CEILING } from './Interior.js';
 import { LAYERS } from '../core/Layers.js';
@@ -150,8 +150,8 @@ export class GreenDragon {
             this.colliders.push({ x: p.x, z: p.z, hx: w / 2 + 0.05, hz: T / 2 + 0.05, rot: Math.atan2(-(e.b[1] - e.a[1]), e.b[0] - e.a[0]) });
           }
           for (const s of [-1, 1]) {
-            B.add('metal', box(0.18, 0.28, 0.18), at(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.12), 0x2a2a2a);
-            B.add('glass', box(0.13, 0.2, 0.13), at(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.12), 0xff0000);
+            B.add('metal', box(0.04, 0.04, 0.3), at(c + s * (w / 2 + 0.3), 2.2, T / 2 + 0.1), 0x2a2622); // bracket
+            lantern(B, at(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.25), 0.2);
             if (o.ochre) this.lamps.push(new THREE.Vector3(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.3).applyMatrix4(e.m));
           }
         } else if (q.round) {
@@ -306,8 +306,7 @@ export class GreenDragon {
       this.colliders.push({ x: p.x, z: p.z, hx: 0.95, hz: 0.3, rot: yaw + r });
     }
     B.add('metal', box(0.09, 2.7, 0.09), at(2.4, 1.35, 7.8), 0x2a2622);
-    B.add('metal', box(0.26, 0.36, 0.26), at(2.4, 2.85, 7.8), 0x2a2622);
-    B.add('glass', box(0.18, 0.26, 0.18), at(2.4, 2.85, 7.8), 0xff0000);
+    lantern(B, at(2.4, 2.9, 7.8), 0.26);
     this.lamps.push(new THREE.Vector3(2.4, 2.85, 7.8).applyMatrix4(base));
 
     // Lanterns on posts along the path from the bridge, alternating sides.
@@ -315,9 +314,8 @@ export class GreenDragon {
     for (let d = 9, k = 0; d < L - 2; d += 5.5, k++) {
       const side = k % 2 ? 1 : -1;
       const m = at(side * 1.9, 0, d);
-      B.add('wood', box(0.12, 1.5, 0.12), m.clone().multiply(mtx(0, 0.75, 0)), TIMBER);
-      B.add('metal', box(0.2, 0.28, 0.2), m.clone().multiply(mtx(0, 1.62, 0)), 0x2a2622);
-      B.add('glass', box(0.14, 0.2, 0.14), m.clone().multiply(mtx(0, 1.62, 0)), 0xff0000);
+      B.add('wood', box(0.12, 1.52, 0.12), m.clone().multiply(mtx(0, 0.76, 0)), TIMBER);
+      lantern(B, m.clone().multiply(mtx(0, 1.68, 0)), 0.19);
       this.lamps.push(new THREE.Vector3(side * 1.9, 1.62, d).applyMatrix4(base));
     }
 

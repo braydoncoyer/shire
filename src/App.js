@@ -18,6 +18,7 @@ import { Player } from './player/Player.js';
 import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
 import { LAYERS, setLayer } from './core/Layers.js';
+import { LampLight } from './world/LampLight.js';
 
 // The shadow passes draw everything with one shared depth material, copying each mesh's alphaTest
 // onto it. Material's setter bumps the version whenever alphaTest crosses zero, and a version change
@@ -56,10 +57,11 @@ export class App {
     scene.backgroundNode = this.sky.backgroundNode;
     scene.fogNode = this.sky.fogNode;
     this.lighting = new Lighting(scene, this.sky, this.settings);
+    this.lampLight = new LampLight(this.sky);
 
     progress('Raising the Hill');
     await tick();
-    this.terrain = new Terrain();
+    this.terrain = new Terrain(this.lampLight);
     scene.add(this.terrain.group);
     this.maps = new GroundMaps(this.terrain);
     this.water = new Water(this.sky, this.terrain.groundNoise, this.maps);
@@ -67,18 +69,18 @@ export class App {
 
     progress('Growing the grass');
     await tick();
-    this.grass = new Grass(this.maps, this.sky);
+    this.grass = new Grass(this.maps, this.sky, this.lampLight);
     scene.add(this.grass.group);
     for (const l of [LAYERS.NO_REFLECT, LAYERS.DETAIL, LAYERS.TERRAIN]) camera.layers.enable(l);
 
     progress('Planting the trees');
     await tick();
-    this.vegetation = new Vegetation(this.sky, this.terrain.groundNoise);
+    this.vegetation = new Vegetation(this.sky, this.terrain.groundNoise, this.lampLight);
     scene.add(this.vegetation.group);
 
     progress('Digging the hobbit holes');
     await tick();
-    this.mats = makeMaterials(this.sky, this.terrain.groundNoise);
+    this.mats = makeMaterials(this.sky, this.terrain.groundNoise, this.lampLight);
     this.shrubs = new Shrubs(this.vegetation);
     this.greenDragon = new GreenDragon(this.mats, this.shrubs, { sky: this.sky, lighting: this.lighting, noiseTex: this.terrain.groundNoise });
     scene.add(this.greenDragon.group);
@@ -91,6 +93,7 @@ export class App {
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
+    this.lampLight.bake([...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps], this.terrain.heights);
     // Alpha-tested meshes (leaves, thatch fringe) draw after the opaque ones, which also lets the
     // GPU's hidden-surface removal cull more of what's behind them.
     scene.traverse((o) => {
@@ -190,6 +193,7 @@ export class App {
     this.grass.update(dt, this.camera, s, this.renderer);
     this.vegetation.update(dt, s, this.camera);
     this.buildings.update(dt);
+    this.lampLight.update(dt);
     this.greenDragon.interior.update(dt);
     // Eyes adjust indoors: inside the common room, exposure moves toward the room's own level.
     const inside = this.greenDragon.interior.inside(this.camera.position.x, this.camera.position.z) && this.camera.position.y < this.greenDragon.interior.y + 2.6;

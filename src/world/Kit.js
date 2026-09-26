@@ -13,7 +13,7 @@ import {
 // ---------------------------------------------------------------------------------------------
 // Materials
 
-export function makeMaterials(sky, noiseTex) {
+export function makeMaterials(sky, noiseTex, lampLight) {
   const vcol = attribute('color', 'vec3');
   const night = sky.u.night;
 
@@ -153,6 +153,10 @@ export function makeMaterials(sky, noiseTex) {
   pane.colorNode = vec3(0.1, 0.12, 0.1);
 
   const mats = { stone, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
+  // Lamplight after dark on every diffuse surface.
+  if (lampLight)
+    for (const m of [stone, wood, paint, brick, roof, plaster, thatch, turf, fringe, straw, rock])
+      m.emissiveNode = lampLight.emission(m.colorNode.rgb, positionWorld);
   mats.flicker = flicker;
   return mats;
 }
@@ -239,6 +243,20 @@ export function mtx(x, y, z, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) {
   _e.set(rx, ry, rz, 'YXZ');
   _q.setFromEuler(_e);
   return new THREE.Matrix4().compose(_p.set(x, y, z), _q, _s.set(sx, sy, sz));
+}
+
+/**
+ * A lantern (iron frame, glass that glows after dusk) centered at `matrix`, about `s` wide:
+ * pyramid cap with a ring, base plate, corner posts and the glass between them.
+ */
+export function lantern(B, matrix, s = 0.2) {
+  const at = (x, y, z) => matrix.clone().multiply(mtx(x, y, z));
+  const h = s * 1.35;
+  B.add('glass', box(s * 0.82, h * 0.9, s * 0.82), at(0, 0, 0), 0xff0000);
+  B.add('metal', new THREE.ConeGeometry(s * 0.78, s * 0.5, 4).rotateY(Math.PI / 4), at(0, h / 2 + s * 0.25, 0), 0x2a2622);
+  B.add('metal', new THREE.TorusGeometry(s * 0.18, s * 0.04, 4, 8), at(0, h / 2 + s * 0.58, 0), 0x2a2622);
+  B.add('metal', box(s * 1.05, s * 0.12, s * 1.05), at(0, -h / 2 - s * 0.06, 0), 0x2a2622);
+  for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) B.add('metal', box(s * 0.09, h, s * 0.09), at((x * s * 0.46), 0, (z * s * 0.46)), 0x2a2622);
 }
 
 /** Box with uvs in meters on each face (so stone/wood patterns keep their scale). */

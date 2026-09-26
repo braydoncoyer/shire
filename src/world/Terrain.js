@@ -134,7 +134,7 @@ function buildOuterGeometry() {
   return g;
 }
 
-export function makeTerrainMaterial(groundNoise, laneTex, waterTex) {
+export function makeTerrainMaterial(groundNoise, laneTex, waterTex, lampLight) {
   // Lambert: no specular sheen at grazing angles (the grass layer provides the real surface).
   const mat = new THREE.MeshLambertNodeMaterial();
   const wp = positionWorld.xz;
@@ -192,15 +192,16 @@ export function makeTerrainMaterial(groundNoise, laneTex, waterTex) {
   else if (dbg === 'noise') mat.colorNode = texture(groundNoise, wp.div(41)).rgb;
   else if (dbg === 'normal') mat.colorNode = normalWorld.mul(0.5).add(0.5);
   else mat.colorNode = shading;
+  if (lampLight) mat.emissiveNode = lampLight.emission(shading, positionWorld);
   return mat;
 }
 
 export class Terrain {
-  constructor() {
+  constructor(lampLight) {
     this.groundNoise = makeGroundNoiseTexture();
     this.laneTex = makeLaneTexture();
     this.waterTex = makeWaterTexture();
-    this.material = makeTerrainMaterial(this.groundNoise, this.laneTex, this.waterTex);
+    this.material = makeTerrainMaterial(this.groundNoise, this.laneTex, this.waterTex, lampLight);
     this.group = new THREE.Group();
     this.heights = bakeHeights();
     this.heightTex = new THREE.DataTexture(this.heights.H, this.heights.m, this.heights.m, THREE.RedFormat, THREE.FloatType);

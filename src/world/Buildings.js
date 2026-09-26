@@ -3,7 +3,7 @@
 // Kit and merged per material.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder, thatchRoof } from './Kit.js';
+import { Builder, mtx, box, cylinder, thatchRoof, lantern } from './Kit.js';
 import { BRIDGE, bridgeDeck, MILL, GREEN_DRAGON } from './Layout.js';
 
 const STONE = 0xb4a992, STONE_DARK = 0x958b78, TIMBER = 0x5a4130, PLASTER = 0xe6dcc3, ROOF = 0x5d4a3e;
@@ -165,8 +165,8 @@ export class Buildings {
     B.add('stone', box(1.0, 0.25, 0.9), at(W / 2 + 0.35, 6.5, -0.8), STONE_DARK);
     this.chimneys.push(toWorld(W / 2 + 0.35, -0.8).setY(M.y + 6.8));
     this.lamps.push(toWorld(door.x0 - 0.35, D / 2 + 0.3).setY(M.y + 2.2));
-    B.add('metal', box(0.2, 0.3, 0.2), at(door.x0 - 0.35, 2.2, D / 2 + 0.15), 0x2a2a2a);
-    B.add('glass', box(0.14, 0.22, 0.14), at(door.x0 - 0.35, 2.2, D / 2 + 0.15), 0xff0000);
+    B.add('metal', box(0.04, 0.04, 0.3), at(door.x0 - 0.35, 2.45, D / 2 + 0.1), 0x2a2a2a);
+    lantern(B, at(door.x0 - 0.35, 2.2, D / 2 + 0.25), 0.2);
 
     // The waterwheel on the water side, turning on its own.
     const wheelB = new Builder();

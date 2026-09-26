@@ -5,7 +5,7 @@
 // there a vegetable patch, a bench, a washing line, beehives or a lamp post.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder } from './Kit.js';
+import { Builder, mtx, box, cylinder, lantern } from './Kit.js';
 import { buildFacade } from './HoleModel.js';
 import { HOLES, heightAt, laneMask, LANES } from './Layout.js';
 import { mulberry32 } from '../util/noise.js';
@@ -186,8 +186,7 @@ export class HobbitHoles {
     if (rand() < 0.3) {
       const lpx = -gate - 0.5;
       B.add('metal', box(0.07, 2.0, 0.07), atG(lpx, 1.0, fz - 0.25), 0x2a2622);
-      B.add('metal', box(0.22, 0.3, 0.22), atG(lpx, 2.1, fz - 0.25), 0x2a2622);
-      B.add('glass', box(0.16, 0.22, 0.16), atG(lpx, 2.1, fz - 0.25), 0xff0000);
+      lantern(B, atG(lpx, 2.16, fz - 0.25), 0.2);
       this.lanterns.push(toWorld(lpx, fz - 0.25).setY(hole.y + ground(lpx, fz - 0.25) + 2.1));
     }
 
