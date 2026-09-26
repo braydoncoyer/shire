@@ -9,10 +9,11 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, uniform, attribute, uv, vec2, vec3, vec4, float, fract, sin, cos, abs, max, min, pow, hash, mix,
-  smoothstep, length, cameraPosition, cameraWorldMatrix, varying, select, atan, normalize,
+  smoothstep, length, cameraPosition, cameraWorldMatrix, varying, select, atan, normalize, floor,
 } from 'three/tsl';
 import { LAYERS } from '../core/Layers.js';
-import { WATER_Y } from './Layout.js';
+import { WATER_Y, GREEN_DRAGON } from './Layout.js';
+import { cleanPoly } from './Kit.js';
 
 /** Geometry of `n` items, each a copy of `verts` ([x, y, z, u, v]) and `tris`, with an 'id' attribute. */
 function items(n, verts, tris) {
@@ -51,6 +52,21 @@ function wrapped(id, size) {
   return { xz: cameraPosition.xz.add(rel), edge: max(abs(rel.x), abs(rel.y)).div(size * 0.5) };
 }
 
+/** 1 inside the Green Dragon's footprint (an even-odd crossing test over its outline), else 0. */
+function inInn(p) {
+  const poly = cleanPoly(GREEN_DRAGON.poly);
+  let crossings = float(0);
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[j];
+    if (az === bz) continue;
+    const straddles = p.y.greaterThan(az).notEqual(p.y.greaterThan(bz));
+    const left = p.x.lessThan(p.y.sub(az).mul((bx - ax) / (bz - az)).add(ax));
+    crossings = crossings.add(select(straddles.and(left), float(1), float(0)));
+  }
+  return step05(fract(crossings.mul(0.5)));
+}
+const step05 = (v) => select(v.greaterThan(0.25), float(1), float(0));
+
 export class Wildlife {
   constructor(maps, sky) {
     this.u = { time: uniform(0), wind: uniform(new THREE.Vector2()) };
@@ -83,7 +99,8 @@ export class Wildlife {
       const flash = smoothstep(0.0, 0.06, cycle).mul(float(1).sub(smoothstep(0.08, 0.32, cycle)));
       // After dusk only, not over water, faded in at the edge of the box and near the camera.
       const on = smoothstep(0.25, 0.7, su.night).mul(float(1).sub(smoothstep(0.75, 1.0, edge)))
-        .mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.6, ground)).mul(smoothstep(0.6, 1.5, length(vec3(p.x, y, p.y).sub(cameraPosition))));
+        .mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.6, ground)).mul(smoothstep(0.6, 1.5, length(vec3(p.x, y, p.y).sub(cameraPosition))))
+        .mul(float(1).sub(inInn(p)));
       glow.assign(flash.mul(on));
       const size = float(0.22);
       const c = attribute('position', 'vec3').xy;
@@ -99,23 +116,36 @@ export class Wildlife {
   }
 
   _butterflies(maps, sky) {
-    const N = 130, BOX = 50;
+    // Most butterflies keep to flowers: small colonies of up to four, each over a flower drift or
+    // bed, though only some patches have one. A few strays wander anywhere.
+    const N = 480, BOX = 70, COLONY = 4;
     const u = this.u, su = sky.u;
     const tint = varying(vec3(1), 'bfTint');
     const vis = varying(float(0), 'bfVis');
     const m = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide, alphaTest: 0.5 });
     m.positionNode = Fn(() => {
       const id = attribute('id', 'float');
-      const { xz, edge } = wrapped(id, BOX);
+      const colony = floor(id.div(COLONY));
+      const stray = rnd(id, 20).lessThan(0.025);
+      const { xz: home, edge } = wrapped(select(stray, id.add(10000), colony), BOX);
+      // Flowers at the colony's home (the same drifts and beds the ground cover grows).
+      const lanes = maps.lanes(home);
+      const drift = smoothstep(0.5, 0.68, maps.noise(home, 17).r.mul(0.7).add(maps.noise(home, 6.5).b.mul(0.3)));
+      const flowers = max(drift, smoothstep(0.7, 0.9, lanes.a)).mul(float(1).sub(smoothstep(0.02, 0.3, lanes.r)));
+      const settled = flowers.greaterThan(0.5).and(rnd(colony, 21).lessThan(0.4)).and(rnd(id, 22).lessThan(0.8));
+      // Colonies flit about their patch, low over the flowers; strays range widely and higher.
+      const R1 = select(stray, float(4.5), float(1.1)), R2 = select(stray, float(0.6), float(0.35));
+      const spot = select(stray, vec2(0), vec2(rnd(id, 23), rnd(id, 24)).sub(0.5).mul(2.2));
       const t = u.time.add(rnd(id, 3).mul(100));
+      const ph = rnd(id, 4).mul(9);
       // Erratic wandering: a slow loop plus quick jinks.
-      const a = vec2(sin(t.mul(0.31)), cos(t.mul(0.27))).mul(3)
-        .add(vec2(sin(t.mul(1.7).add(rnd(id, 4).mul(9))), cos(t.mul(1.3))).mul(0.5));
-      const va = vec2(cos(t.mul(0.31)).mul(0.93), sin(t.mul(0.27)).mul(-0.81))
-        .add(vec2(cos(t.mul(1.7).add(rnd(id, 4).mul(9))).mul(0.85), sin(t.mul(1.3)).mul(-0.65)));
-      const p = xz.add(a);
+      const a = vec2(sin(t.mul(0.31)), cos(t.mul(0.27))).mul(R1).add(vec2(sin(t.mul(1.7).add(ph)), cos(t.mul(1.3))).mul(R2));
+      const va = vec2(cos(t.mul(0.31)).mul(0.31), sin(t.mul(0.27)).mul(-0.27)).mul(R1)
+        .add(vec2(cos(t.mul(1.7).add(ph)).mul(1.7), sin(t.mul(1.3)).mul(-1.3)).mul(R2));
+      const p = home.add(spot).add(a);
       const ground = maps.height(p);
-      const y = ground.add(0.75).add(rnd(id, 5).mul(1.1)).add(sin(t.mul(2.3)).mul(0.25)).add(sin(t.mul(9)).mul(0.04));
+      const lift = select(stray, rnd(id, 5).mul(1.1).add(0.8), rnd(id, 5).mul(0.5).add(0.3));
+      const y = ground.add(lift).add(sin(t.mul(2.3)).mul(0.18)).add(sin(t.mul(9)).mul(0.04));
       const heading = atan(va.x, va.y);
       // Wings beat fast, sometimes held open to glide.
       const beat = sin(t.mul(22)).mul(0.5).add(0.5);
@@ -130,7 +160,8 @@ export class Wildlife {
       const rot = vec3(wing.x.mul(ch).add(wing.z.mul(sh)), wing.y, wing.z.mul(ch).sub(wing.x.mul(sh)));
       const pick = rnd(id, 8);
       tint.assign(select(pick.lessThan(0.45), vec3(0.95, 0.95, 0.9), select(pick.lessThan(0.8), vec3(1.0, 0.85, 0.25), vec3(0.95, 0.5, 0.15))));
-      vis.assign(float(1).sub(su.night).mul(float(1).sub(smoothstep(0.8, 1.0, edge))).mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.8, ground)));
+      const present = select(stray.or(settled), float(1), float(0)).mul(float(1).sub(inInn(p)));
+      vis.assign(present.mul(float(1).sub(su.night)).mul(float(1).sub(smoothstep(0.8, 1.0, edge))).mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.8, ground)));
       return vec3(p.x, y, p.y).add(rot).add(vec3(0, select(vis.lessThan(0.5), float(-1e4), float(0)), 0));
     })();
     m.colorNode = Fn(() => {
