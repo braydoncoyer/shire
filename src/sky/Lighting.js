@@ -9,6 +9,7 @@ import { sunDirection, moonDirection } from './SunPosition.js';
 
 const MOON_COLOR = [0.55, 0.68, 1.0];
 const MOON_E = 0.028;
+const INDOOR_EXPOSURE = 4.5;
 
 export class Lighting {
   constructor(scene, sky, settings) {
@@ -39,6 +40,8 @@ export class Lighting {
     this.cacheKey = '';
     this.exposure = 1;
     this.targetExposure = 1;
+    this.indoor = 0;
+    this.indoorMix = 0;
     this.info = null;
   }
 
@@ -113,6 +116,9 @@ export class Lighting {
     const Ldirect = luminance(col) * Math.max(dir[1], 0) * 0.75;
     const Lscene = (0.18 * (Ldirect + luminance(skyE))) / Math.PI;
     this.targetExposure = THREE.MathUtils.clamp(0.19 * Math.pow(Math.max(Lscene, 1e-6), -0.8), 0.05, 60);
+    // Indoors (the Green Dragon), the eye adapts to the lamplit room instead.
+    this.indoorMix += ((this.indoor || 0) - this.indoorMix) * (dt > 0 ? 1 - Math.exp(-dt * 3) : 1);
+    this.targetExposure = Math.exp(Math.log(this.targetExposure) * (1 - this.indoorMix) + Math.log(INDOOR_EXPOSURE) * this.indoorMix);
     const k = dt > 0 ? 1 - Math.exp(-dt * 2.5) : 1;
     this.exposure += (this.targetExposure - this.exposure) * k;
 

@@ -3,7 +3,8 @@
 
 import * as THREE from 'three/webgpu';
 import { tileFbm2, makeWorley2, makeWorley3, smoothstep, clamp } from './noise.js';
-import { LANE_TEXTURE, lakeDist, pondDist, INNER_HALF } from '../world/Layout.js';
+import { LANE_TEXTURE, lakeDist, pondDist, INNER_HALF, GREEN_DRAGON } from '../world/Layout.js';
+import { polyDist, cleanPoly } from '../world/Kit.js';
 
 function dataTex(data, w, h, { format = THREE.RGBAFormat, mips = true } = {}) {
   const t = new THREE.DataTexture(data, w, h, format, THREE.UnsignedByteType);
@@ -96,6 +97,12 @@ export function makeLaneTexture() {
     data[k * 4 + 2] = yard[k];
     data[k * 4 + 3] = bed[k];
   }
+  // Under the Green Dragon's floor: bare (lane) ground, so no grass grows up through it.
+  const res = (INNER_HALF * 2) / n, poly = cleanPoly(GREEN_DRAGON.poly);
+  const xs = poly.map((p) => p[0]), zs = poly.map((p) => p[1]);
+  for (let j = Math.floor((Math.min(...zs) + INNER_HALF) / res); j <= (Math.max(...zs) + INNER_HALF) / res; j++)
+    for (let i = Math.floor((Math.min(...xs) + INNER_HALF) / res); i <= (Math.max(...xs) + INNER_HALF) / res; i++)
+      if (polyDist(poly, (i + 0.5) * res - INNER_HALF, (j + 0.5) * res - INNER_HALF) < -0.3) data[(j * n + i) * 4] = 255;
   const t = dataTex(data, n, n);
   t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   return t;

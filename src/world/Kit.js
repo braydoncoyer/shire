@@ -147,7 +147,12 @@ export function makeMaterials(sky, noiseTex) {
     return lampWarm.mul(lit).mul(smoothstep(0.05, 0.6, night)).mul(0.11).mul(grid).mul(flicker.mul(0.08).add(0.95));
   })();
 
-  const mats = { stone, wood, paint, brick, roof, metal, glass, plaster, thatch, turf, fringe, straw, rock };
+  // Window panes you can see through (the Green Dragon's common room): a faint tint and a sharp
+  // reflection of the sun.
+  const pane = new THREE.MeshStandardNodeMaterial({ roughness: 0.06, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
+  pane.colorNode = vec3(0.1, 0.12, 0.1);
+
+  const mats = { stone, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
   mats.flicker = flicker;
   return mats;
 }

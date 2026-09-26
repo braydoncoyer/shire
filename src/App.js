@@ -80,7 +80,7 @@ export class App {
     await tick();
     this.mats = makeMaterials(this.sky, this.terrain.groundNoise);
     this.shrubs = new Shrubs(this.vegetation);
-    this.greenDragon = new GreenDragon(this.mats, this.shrubs);
+    this.greenDragon = new GreenDragon(this.mats, this.shrubs, { sky: this.sky, lighting: this.lighting, noiseTex: this.terrain.groundNoise });
     scene.add(this.greenDragon.group);
     this.holes = new HobbitHoles(this.mats, this.shrubs);
     scene.add(this.holes.group);
@@ -190,8 +190,13 @@ export class App {
     this.grass.update(dt, this.camera, s, this.renderer);
     this.vegetation.update(dt, s, this.camera);
     this.buildings.update(dt);
+    this.greenDragon.interior.update(dt);
+    // Eyes adjust indoors: inside the common room, exposure moves toward the room's own level.
+    const inside = this.greenDragon.interior.inside(this.camera.position.x, this.camera.position.z) && this.camera.position.y < this.greenDragon.interior.y + 2.6;
+    this.lighting.indoor = inside ? 1 : 0;
     this.water.update(dt, s);
     this.post.exposure.value = this.lighting.finalExposure();
+    this.post.indoor.value = this.lighting.indoorMix;
     this.post.bloomStrength.value = s.bloom;
 
     this.sky.render(this.camera);

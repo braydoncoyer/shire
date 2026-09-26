@@ -7,6 +7,8 @@
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist } from './Kit.js';
 import { GREEN_DRAGON, GEO, BRIDGE } from './Layout.js';
+import { GreenDragonInterior, HALL, CEILING } from './Interior.js';
+import { LAYERS } from '../core/Layers.js';
 
 const TIMBER = 0x4a3526, OCHRE = 0xd8b060, STONE = 0xb0a690, STONE_DARK = 0x8c8474;
 
@@ -24,17 +26,28 @@ function doorPoints(poly) {
 }
 
 export class GreenDragon {
-  constructor(mats, shrubs) {
+  constructor(mats, shrubs, env) {
     this.shrubs = shrubs;
     this.colliders = [];
     this.lamps = [];
     this.chimneys = [];
     const B = new Builder();
     const G = GREEN_DRAGON;
-    this._building(B, G.poly, G.y, { wallH: 2.55, rise: 5.6, reach: 12, doors: true, ochre: true, dormer: true, chimneys: 4 });
+    this.interior = new GreenDragonInterior(mats, env);
+    this.interior.doorPoints = [];
+    this._building(B, G.poly, G.y, { wallH: 2.55, rise: 5.6, reach: 12, doors: true, ochre: true, dormer: true, chimneys: 4, hall: HALL.poly, forceChimney: this.interior.hearthXZ() });
     this._building(B, G.shed, G.shedY, { wallH: 2.3, rise: 3.2, reach: 4.5, doors: true, ochre: false, mixed: true, chimneys: 1 });
     this._forecourt(B);
-    this.group = B.build(mats);
+    this.interior.build(B);
+    this.colliders.push(...this.interior.colliders);
+    this.group = B.build({ ...mats, ...this.interior.mats });
+    this.group.traverse((o) => {
+      if (!o.isMesh) return;
+      // Glass lets the sun through; the room's furnishings stay out of the lake's reflection.
+      if (o.material === mats.pane || o.material === mats.glass) o.castShadow = false;
+      if (o.name.startsWith('in_')) o.layers.set(LAYERS.DETAIL);
+      if (o.name === 'in_flame' || o.name === 'in_lamp') o.castShadow = false;
+    });
   }
 
   _building(B, rawPoly, y, o) {
@@ -75,7 +88,14 @@ export class GreenDragon {
         if (!hit || hit.e !== e) continue;
         const w = o.ochre ? (d === doors[0] ? 1.9 : 1.5) : 1.0;
         const c = Math.max(w / 2 + 0.3, Math.min(e.len - w / 2 - 0.3, hit.t));
-        open.push({ x0: c - w / 2, x1: c + w / 2, y0: 0.1, y1: o.ochre ? 1.95 : 1.8, door: true });
+        // Doors into the common room stand open; the rest are shut.
+        const inward = [e.a[0] + ((e.b[0] - e.a[0]) / e.len) * c - e.n[0] * 1.2, e.a[1] + ((e.b[1] - e.a[1]) / e.len) * c - e.n[1] * 1.2];
+        const opened = !!o.hall && polyDist(o.hall, inward[0], inward[1]) < 0;
+        if (opened) {
+          const outside = [inward[0] + e.n[0] * 2.4, inward[1] + e.n[1] * 2.4];
+          this.interior.doorPoints.push([...outside, inward[0] - e.n[0] * 2.5, inward[1] - e.n[1] * 2.5]);
+        }
+        open.push({ x0: c - w / 2, x1: c + w / 2, y0: 0.1, y1: o.ochre ? 1.95 : 1.8, door: true, opened });
         if (d === doors[0]) mainDoor = { e, c };
       }
       const nWin = Math.floor((e.len - 1.2) / 3.2);
@@ -111,12 +131,24 @@ export class GreenDragon {
       }
       for (const q of open) {
         const c = (q.x0 + q.x1) / 2, w = q.x1 - q.x0;
+        // Windows into the common room are clear glass; elsewhere dark panes that glow at night.
+        const wx = e.a[0] + ((e.b[0] - e.a[0]) / e.len) * c - e.n[0] * 1.0, wz = e.a[1] + ((e.b[1] - e.a[1]) / e.len) * c - e.n[1] * 1.0;
+        const glass = o.hall && polyDist(o.hall, wx, wz) < 0 ? 'pane' : 'glass';
         if (q.door) {
           // Round-arched doorway: timber arch, a glowing interior, the door swung open.
           B.add('wood', new THREE.TorusGeometry(w / 2 + 0.05, 0.09, 6, 18, Math.PI), at(c, q.y1, T / 2 + 0.05), TIMBER);
           B.add(wallMat, box(w, w / 2 + 0.1, T), at(c, q.y1 + w / 4, 0), wallTint);
-          B.add('glass', box(w - 0.05, q.y1 - q.y0 + w * 0.3, 0.05), at(c, (q.y0 + q.y1 + w * 0.3) / 2, -T / 2 + 0.04), 0xff0000);
-          B.add('paint', box(w * 0.5, q.y1 - q.y0 + w * 0.2, 0.07), at(q.x0, (q.y0 + q.y1) / 2, T / 2 + 0.3, 0, 1.25, 0).multiply(mtx(w * 0.25, 0, 0)), o.ochre ? 0x2f6b3a : 0x2e5a9a);
+          const doorPaint = o.ochre ? 0x2f6b3a : 0x2e5a9a;
+          if (q.opened) {
+            // Swung open into the room, against the reveal.
+            B.add('paint', box(w, q.y1 - q.y0, 0.07), at(q.x0 + 0.04, (q.y0 + q.y1) / 2, -T / 2 - 0.05, 0, 1.45, 0).multiply(mtx(w / 2, 0, 0)), doorPaint);
+            B.add('wood', box(w + 0.1, 0.12, T + 0.02), at(c, q.y1 + 0.06, 0), TIMBER);
+          } else {
+            B.add('paint', box(w, q.y1 - q.y0, 0.08), at(c, (q.y0 + q.y1) / 2, 0.05), doorPaint);
+            for (const hy of [0.45, 1.45]) B.add('metal', box(w * 0.7, 0.05, 0.02), at(c - w * 0.12, q.y0 + hy, 0.1), 0x222222);
+            const p = new THREE.Vector3(c, 0, -T / 2).applyMatrix4(e.m);
+            this.colliders.push({ x: p.x, z: p.z, hx: w / 2 + 0.05, hz: T / 2 + 0.05, rot: Math.atan2(-(e.b[1] - e.a[1]), e.b[0] - e.a[0]) });
+          }
           for (const s of [-1, 1]) {
             B.add('metal', box(0.18, 0.28, 0.18), at(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.12), 0x2a2a2a);
             B.add('glass', box(0.13, 0.2, 0.13), at(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.12), 0xff0000);
@@ -124,7 +156,7 @@ export class GreenDragon {
           }
         } else if (q.round) {
           const r = w / 2;
-          B.add('glass', new THREE.CircleGeometry(r, 18), at(c, (q.y0 + q.y1) / 2, 0.02), 0xff0000);
+          B.add(glass, new THREE.CircleGeometry(r, 18), at(c, (q.y0 + q.y1) / 2, 0.02), 0xff0000);
           B.add('wood', new THREE.TorusGeometry(r, 0.07, 6, 18), at(c, (q.y0 + q.y1) / 2, T / 2 + 0.02), TIMBER);
           B.add('wood', box(r * 2, 0.04, 0.05), at(c, (q.y0 + q.y1) / 2, 0.04), TIMBER);
           B.add('wood', box(0.04, r * 2, 0.05), at(c, (q.y0 + q.y1) / 2, 0.04), TIMBER);
@@ -132,8 +164,8 @@ export class GreenDragon {
         } else {
           // Round-headed casement with leaded panes.
           const r = w / 2;
-          B.add('glass', box(w, q.y1 - q.y0, 0.04), at(c, (q.y0 + q.y1) / 2, 0), 0xff0000);
-          B.add('glass', new THREE.CircleGeometry(r, 14, 0, Math.PI), at(c, q.y1, 0.02), 0xff0000);
+          B.add(glass, box(w, q.y1 - q.y0, 0.04), at(c, (q.y0 + q.y1) / 2, 0), 0xff0000);
+          B.add(glass, new THREE.CircleGeometry(r, 14, 0, Math.PI), at(c, q.y1, 0.02), 0xff0000);
           B.add(wallMat, box(w + 0.02, r + 0.2, T), at(c, q.y1 + (r + 0.2) / 2, -0.03), wallTint);
           B.add('wood', new THREE.TorusGeometry(r + 0.03, 0.06, 6, 14, Math.PI), at(c, q.y1, T / 2 + 0.03), TIMBER);
           B.add('wood', box(0.05, q.y1 - q.y0 + r, 0.05), at(c, (q.y0 + q.y1 + r) / 2, 0.04), TIMBER);
@@ -141,6 +173,42 @@ export class GreenDragon {
           B.add('wood', box(w + 0.2, 0.08, 0.28), at(c, q.y0 - 0.04, T / 2 + 0.08), TIMBER);
         }
       }
+      // Inside the common room: a plastered lining over the wall's inner face (lit by the room's
+      // own lights), with the same openings, and dark framing over it.
+      if (o.hall) {
+        let t0 = null, t1 = null;
+        for (let t = 0; t <= e.len; t += 0.1) {
+          const px = e.a[0] + ((e.b[0] - e.a[0]) / e.len) * t - e.n[0] * 0.7, pz = e.a[1] + ((e.b[1] - e.a[1]) / e.len) * t - e.n[1] * 0.7;
+          if (polyDist(o.hall, px, pz) < 0) { if (t0 === null) t0 = t; t1 = t; }
+        }
+        if (t0 !== null && t1 - t0 > 0.3) {
+          t0 = Math.max(0, t0 - 0.7);
+          t1 = Math.min(e.len, t1 + 0.7);
+          const zi = -T / 2 - 0.03;
+          const cut = open.filter((q) => !q.round); // round windows are filled behind their glass
+          wall(B, 'in_plaster', at, t0, t1, zi, 0, CEILING + 0.02, 0.05, cut, 0xd6bf8c);
+          const n = Math.max(1, Math.round((t1 - t0) / 1.8));
+          for (let k = 0; k <= n; k++) {
+            const x = t0 + ((t1 - t0) * k) / n;
+            if (cut.some((q) => x > q.x0 - 0.12 && x < q.x1 + 0.12)) continue;
+            B.add('in_wood', box(0.16, CEILING, 0.08), at(x, CEILING / 2, zi - 0.06), 0x3e2c20);
+          }
+          B.add('in_wood', box(t1 - t0, 0.16, 0.09), at((t0 + t1) / 2, CEILING - 0.1, zi - 0.06), 0x3e2c20);
+          // Skirting over the plinth's inner edge (doorways stay clear).
+          let sx = t0;
+          for (const q of [...cut.filter((q) => q.door).sort((a, b) => a.x0 - b.x0), { x0: t1, x1: t1 }]) {
+            if (q.x0 - sx > 0.05) B.add('in_wood', box(q.x0 - sx, 0.2, 0.18), at((sx + q.x0) / 2, 0.1, zi - 0.1), 0x3e2c20);
+            sx = Math.max(sx, q.x1);
+          }
+          for (const q of cut) {
+            if (q.x1 < t0 || q.x0 > t1) continue;
+            // Sill and lintel inside each opening.
+            if (!q.door) B.add('in_wood', box(q.x1 - q.x0 + 0.2, 0.06, 0.25), at((q.x0 + q.x1) / 2, q.y0 - 0.03, zi - 0.1), 0x5a3e28);
+            B.add('in_wood', box(q.x1 - q.x0 + 0.3, 0.14, 0.1), at((q.x0 + q.x1) / 2, q.y1 + 0.07, zi - 0.06), 0x3e2c20);
+          }
+        }
+      }
+
       // Colliders: wall segments between doors.
       let x = 0;
       const segs = open.filter((q) => q.door).sort((a, b) => a.x0 - b.x0);
@@ -191,6 +259,10 @@ export class GreenDragon {
       for (let z = minZ; z < maxZ; z += 1.5) for (let x = minX; x < maxX; x += 1.5) if (polyDist(poly, x, z) < -2) cands.push([x, z, roof.userData.heightAt(x, z)]);
       cands.sort((a, b) => b[2] - a[2]);
       const picked = [];
+      if (o.forceChimney) {
+        const [fx, fz] = o.forceChimney;
+        picked.push([fx, fz, roof.userData.heightAt(fx, fz)]);
+      }
       for (const c of cands) {
         if (picked.length >= o.chimneys) break;
         if (picked.some((p) => Math.hypot(p[0] - c[0], p[1] - c[1]) < 9)) continue;
@@ -199,7 +271,9 @@ export class GreenDragon {
       for (const [x, z, h] of picked) {
         const top = h + 1.2;
         const brick = o.ochre;
-        B.add(brick ? 'brick' : 'stone', box(0.8, top - y - 1, 0.8), mtx(x, (top + y + 1) / 2, z), brick ? 0x9a5236 : STONE);
+        // Over the common room a stack starts at the ceiling (the hearth's is inside its breast).
+        const foot = o.hall && polyDist(o.hall, x, z) < 0.6 ? y + CEILING : y + 1;
+        B.add(brick ? 'brick' : 'stone', box(0.8, top - foot, 0.8), mtx(x, (top + foot) / 2, z), brick ? 0x9a5236 : STONE);
         B.add('stone', box(1.0, 0.18, 1.0), mtx(x, top, z), STONE_DARK);
         if (brick) B.add('brick', cylinder(0.13, 0.15, 0.4, 10), mtx(x - 0.15, top + 0.25, z), 0xa8603e);
         this.chimneys.push(new THREE.Vector3(x, top + 0.45, z));
