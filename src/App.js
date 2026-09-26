@@ -19,6 +19,7 @@ import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
+import { Smoke } from './world/Smoke.js';
 
 // The shadow passes draw everything with one shared depth material, copying each mesh's alphaTest
 // onto it. Material's setter bumps the version whenever alphaTest crosses zero, and a version change
@@ -93,6 +94,14 @@ export class App {
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
+    // Smoke from about half the chimneys, always the inn's hearth and Bag End.
+    const chimneys = [this.greenDragon.chimneys[0], this.holes.chimneys[0]];
+    [...this.greenDragon.chimneys.slice(1), ...this.holes.chimneys.slice(3), ...this.buildings.chimneys].forEach((c, i) => {
+      const h = Math.sin(i * 12.9898 + 4.1) * 43758.5453;
+      if (h - Math.floor(h) < 0.5) chimneys.push(c);
+    });
+    this.smoke = new Smoke(chimneys, this.sky, this.terrain.groundNoise);
+    scene.add(this.smoke.mesh);
     this.lampLight.bake([...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps], this.terrain.heights);
     // Alpha-tested meshes (leaves, thatch fringe) draw after the opaque ones, which also lets the
     // GPU's hidden-surface removal cull more of what's behind them.
@@ -194,6 +203,7 @@ export class App {
     this.vegetation.update(dt, s, this.camera);
     this.buildings.update(dt);
     this.lampLight.update(dt);
+    this.smoke.update(dt, s);
     this.greenDragon.interior.update(dt);
     // Eyes adjust indoors: inside the common room, exposure moves toward the room's own level.
     const inside = this.greenDragon.interior.inside(this.camera.position.x, this.camera.position.z) && this.camera.position.y < this.greenDragon.interior.y + 2.6;
