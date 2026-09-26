@@ -451,3 +451,53 @@ export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 1
   g.userData.heightAt = (x, z) => height(Math.min(polyDist(p, x, z) - overhang, 0));
   return g;
 }
+
+/** A flat shape extruded `depth` (centered on z = 0), uvs in meters. */
+export function slab(shape, depth, curveSegments = 12) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments });
+  return g.translate(0, 0, -depth / 2);
+}
+
+/**
+ * A curved timber: the part of a ring (outer radius `r`, `w` wide) between angles `a0` and `a1`
+ * (radians, counterclockwise from +x in the xy plane), `d` deep, centered on the ring's center.
+ */
+export function arcTimber(r, w, d, a0, a1, seg = 10) {
+  const s = new THREE.Shape();
+  s.absarc(0, 0, r, a0, a1, false);
+  s.absarc(0, 0, r - w, a1, a0, true);
+  s.closePath();
+  return slab(s, d, seg);
+}
+
+/** A `w` × `h` panel (centered) with a round hole of radius `r` through it: the wall around a round window. */
+export function holedPanel(w, h, r, depth) {
+  const s = new THREE.Shape();
+  s.moveTo(-w / 2, -h / 2).lineTo(w / 2, -h / 2).lineTo(w / 2, h / 2).lineTo(-w / 2, h / 2).closePath();
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, r, 0, Math.PI * 2, true);
+  s.holes.push(hole);
+  return slab(s, depth, 20);
+}
+
+/**
+ * The wall over a round-headed opening: from the springing line (y = 0) up to `h`, `w` wide
+ * (centered), with the semicircular head cut out of it.
+ */
+export function archHead(w, h, depth) {
+  const s = new THREE.Shape();
+  s.moveTo(w / 2, 0);
+  s.absarc(0, 0, w / 2, 0, Math.PI, false);
+  s.lineTo(-w / 2, h).lineTo(w / 2, h).closePath();
+  return slab(s, depth, 16);
+}
+
+/** A round-headed leaf (door): `w` wide, `h` tall at the crown, bottom at y = 0. */
+export function archLeaf(w, h, depth) {
+  const s = new THREE.Shape();
+  const spring = h - w / 2;
+  s.moveTo(-w / 2, 0).lineTo(w / 2, 0).lineTo(w / 2, spring);
+  s.absarc(0, spring, w / 2, 0, Math.PI, false);
+  s.closePath();
+  return slab(s, depth, 16);
+}

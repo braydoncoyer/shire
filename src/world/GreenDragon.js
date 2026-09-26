@@ -5,7 +5,7 @@
 // eaves sweep low. A gabled dormer with a round window sits over the main door, facing the bridge.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist, lantern } from './Kit.js';
+import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist, lantern, holedPanel, arcTimber } from './Kit.js';
 import { GREEN_DRAGON, GEO, BRIDGE } from './Layout.js';
 import { GreenDragonInterior, HALL, CEILING } from './Interior.js';
 import { LAYERS } from '../core/Layers.js';
@@ -46,7 +46,7 @@ export class GreenDragon {
       // Glass lets the sun through; the room's furnishings stay out of the lake's reflection.
       if (o.material === mats.pane || o.material === mats.glass) o.castShadow = false;
       if (o.name.startsWith('in_')) o.layers.set(LAYERS.DETAIL);
-      if (o.name === 'in_flame' || o.name === 'in_lamp') o.castShadow = false;
+      if (o.name === 'in_flame' || o.name === 'in_lamp' || o.name === 'in_glow') o.castShadow = false;
     });
   }
 
@@ -101,9 +101,13 @@ export class GreenDragon {
       const nWin = Math.floor((e.len - 1.2) / 3.2);
       for (let k = 0; k < nWin; k++) {
         const c = ((k + 0.5) * e.len) / nWin;
-        const w = o.ochre && k % 3 === 1 ? 0.9 : 1.1;
+        // Into the common room: big round windows, spoked above and latticed below.
+        const hx = e.a[0] + ((e.b[0] - e.a[0]) / e.len) * c - e.n[0] * 1.0, hz = e.a[1] + ((e.b[1] - e.a[1]) / e.len) * c - e.n[1] * 1.0;
+        const hall = !!o.hall && polyDist(o.hall, hx, hz) < 0;
+        const w = hall ? 1.25 : o.ochre && k % 3 === 1 ? 0.9 : 1.1;
         if (open.some((q) => c + w / 2 + 0.35 > q.x0 && c - w / 2 - 0.35 < q.x1)) continue;
-        open.push({ x0: c - w / 2, x1: c + w / 2, y0: 0.9, y1: 1.75, round: o.ochre && k % 3 === 1 });
+        if (hall) open.push({ x0: c - w / 2, x1: c + w / 2, y0: 0.72, y1: 1.97, hallRound: true });
+        else open.push({ x0: c - w / 2, x1: c + w / 2, y0: 0.9, y1: 1.75, round: o.ochre && k % 3 === 1 });
       }
       if (o.mixed) {
         // Fieldstone to waist height, ochre plaster above.
@@ -154,6 +158,15 @@ export class GreenDragon {
             lantern(B, at(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.25), 0.2);
             if (o.ochre) this.lamps.push(new THREE.Vector3(c + s * (w / 2 + 0.3), 1.95, T / 2 + 0.3).applyMatrix4(e.m));
           }
+        } else if (q.hallRound) {
+          const r = w / 2, cy = (q.y0 + q.y1) / 2, D = T + 0.16, zc = -0.08;
+          // The wall (and the room's lining) around the circle, its reveal, the glass, the frame.
+          B.add(wallMat, holedPanel(w + 0.02, q.y1 - q.y0 + 0.02, r, T), at(c, cy, 0), wallTint);
+          B.add('in_plaster', holedPanel(w + 0.02, q.y1 - q.y0 + 0.02, r, 0.05), at(c, cy, -T / 2 - 0.03), OCHRE);
+          B.add(glass, new THREE.CircleGeometry(r, 24), at(c, cy, 0), 0xff0000);
+          B.add('wood', arcTimber(r + 0.07, 0.1, 0.12, 0, Math.PI * 2, 24), at(c, cy, T / 2 + 0.02), TIMBER);
+          B.add('in_wood', arcTimber(r + 0.08, 0.12, 0.1, 0, Math.PI * 2, 24), at(c, cy, -T / 2 - 0.1), 0x3e2c20);
+          roundWindowBars(B, at, c, cy, zc, r, D);
         } else if (q.round) {
           const r = w / 2;
           B.add(glass, new THREE.CircleGeometry(r, 18), at(c, (q.y0 + q.y1) / 2, 0.02), 0xff0000);
@@ -182,16 +195,34 @@ export class GreenDragon {
           if (polyDist(o.hall, px, pz) < 0) { if (t0 === null) t0 = t; t1 = t; }
         }
         if (t0 !== null && t1 - t0 > 0.3) {
-          t0 = Math.max(0, t0 - 0.7);
-          t1 = Math.min(e.len, t1 + 0.7);
+          // Past the corners a little, so linings meet where a corner juts into the room.
+          t0 = Math.max(-0.45, t0 - 0.7 - (t0 < 0.8 ? 0.45 : 0));
+          t1 = Math.min(e.len + 0.45, t1 + 0.7 + (t1 > e.len - 0.8 ? 0.45 : 0));
           const zi = -T / 2 - 0.03;
           const cut = open.filter((q) => !q.round); // round windows are filled behind their glass
-          wall(B, 'in_plaster', at, t0, t1, zi, 0, CEILING + 0.02, 0.05, cut, 0xd6bf8c);
+          wall(B, 'in_plaster', at, t0, t1, zi, 0, CEILING + 0.02, 0.05, cut, OCHRE);
+          // Framing: posts, and in every clear panel a pair of curved braces rising from the posts
+          // to the wall plate, or a sconce between them.
           const n = Math.max(1, Math.round((t1 - t0) / 1.8));
+          const posts = [];
           for (let k = 0; k <= n; k++) {
             const x = t0 + ((t1 - t0) * k) / n;
             if (cut.some((q) => x > q.x0 - 0.12 && x < q.x1 + 0.12)) continue;
-            B.add('in_wood', box(0.16, CEILING, 0.08), at(x, CEILING / 2, zi - 0.06), 0x3e2c20);
+            B.add('in_wood', box(0.18, CEILING, 0.1), at(x, CEILING / 2, zi - 0.07), 0x3a2618);
+            posts.push(x);
+          }
+          for (let k = 0; k + 1 < posts.length; k++) {
+            const xa = posts[k], xb = posts[k + 1];
+            if (xb - xa > 2.4 || cut.some((q) => q.x1 > xa && q.x0 < xb)) continue;
+            this.hallPanels = (this.hallPanels || 0) + 1;
+            if (this.hallPanels % 3 === 0) {
+              this.interior.sconce(B, at((xa + xb) / 2, 1.65, zi - 0.03, 0, Math.PI, 0));
+              continue;
+            }
+            const R = Math.min(0.9, (xb - xa) / 2 - 0.05);
+            B.add('in_wood', arcTimber(R, 0.13, 0.08, Math.PI / 2, Math.PI, 8), at(xa + 0.09 + R, CEILING - 0.18 - R, zi - 0.07), 0x3a2618);
+            B.add('in_wood', arcTimber(R, 0.13, 0.08, 0, Math.PI / 2, 8), at(xb - 0.09 - R, CEILING - 0.18 - R, zi - 0.07), 0x3a2618);
+            B.add('in_wood', box(xb - xa, 0.12, 0.08), at((xa + xb) / 2, 0.95, zi - 0.07), 0x3a2618); // rail
           }
           B.add('in_wood', box(t1 - t0, 0.16, 0.09), at((t0 + t1) / 2, CEILING - 0.1, zi - 0.06), 0x3e2c20);
           // Skirting over the plinth's inner edge (doorways stay clear).
@@ -203,6 +234,10 @@ export class GreenDragon {
           for (const q of cut) {
             if (q.x1 < t0 || q.x0 > t1) continue;
             // Sill and lintel inside each opening.
+            if (q.hallRound) {
+              B.add('in_wood', box(q.x1 - q.x0 + 0.1, 0.06, 0.22), at((q.x0 + q.x1) / 2, q.y0 + 0.05, zi - 0.1), 0x5a3e28);
+              continue;
+            }
             if (!q.door) B.add('in_wood', box(q.x1 - q.x0 + 0.2, 0.06, 0.25), at((q.x0 + q.x1) / 2, q.y0 - 0.03, zi - 0.1), 0x5a3e28);
             B.add('in_wood', box(q.x1 - q.x0 + 0.3, 0.14, 0.1), at((q.x0 + q.x1) / 2, q.y1 + 0.07, zi - 0.06), 0x3e2c20);
           }
@@ -346,6 +381,29 @@ export class GreenDragon {
 }
 
 // A wall along local x from x0 to x1 with rectangular openings cut out (same as in Buildings.js).
+/**
+ * Glazing bars of a round window (radius `r`, centered at c, cy): a transom across the middle,
+ * spokes fanning over it, and a diamond lattice below.
+ */
+function roundWindowBars(B, at, c, cy, z, r, D) {
+  const bar = (len, x, y, ang, t = 0.035) => B.add('wood', box(len, t, 0.05), at(c + x, cy + y, z, 0, 0, ang), TIMBER);
+  bar(r * 2, 0, 0, 0, 0.05);
+  for (const a of [0.45, 1.0, Math.PI / 2, Math.PI - 1.0, Math.PI - 0.45]) bar(r, (Math.cos(a) * r) / 2, (Math.sin(a) * r) / 2, a);
+  // Lattice: lines at ±45° spaced along the diameter, clipped to the lower half-disc.
+  for (const s of [-1, 1])
+    for (let k = -3; k <= 3; k++) {
+      const o = k * r * 0.34; // offset of the line x - s·y = o from the center, along x
+      const pts = [];
+      for (let i = 0; i <= 40; i++) {
+        const x = -r + (2 * r * i) / 40, y = s * (x - o);
+        if (y <= 0 && x * x + y * y <= r * r * 0.97) pts.push([x, y]);
+      }
+      if (pts.length < 2) continue;
+      const [a, b] = [pts[0], pts[pts.length - 1]];
+      bar(Math.hypot(b[0] - a[0], b[1] - a[1]), (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.atan2(b[1] - a[1], b[0] - a[0]), 0.025);
+    }
+}
+
 function wall(B, mat, at, x0, x1, z, y0, h, t, openings = [], tint = 0xffffff) {
   const cuts = openings.filter((o) => o.x1 > x0 && o.x0 < x1).sort((a, b) => a.x0 - b.x0);
   let x = x0;
