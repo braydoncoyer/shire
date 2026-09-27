@@ -83,7 +83,7 @@ export class Wildlife {
   }
 
   _fireflies(maps, sky) {
-    const N = 700, BOX = 60;
+    const N = 220, BOX = 60;
     const u = this.u, su = sky.u;
     const glow = varying(float(0), 'ffGlow');
     const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -108,7 +108,7 @@ export class Wildlife {
         .mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.6, ground)).mul(smoothstep(0.6, 1.5, length(vec3(p.x, y, p.y).sub(cameraPosition))))
         .mul(float(1).sub(inInn(p))).mul(dry());
       glow.assign(flash.mul(on));
-      const size = float(0.22);
+      const size = float(0.075);
       const c = attribute('position', 'vec3').xy;
       const right = cameraWorldMatrix.element(0).xyz, up = cameraWorldMatrix.element(1).xyz;
       return vec3(p.x, y, p.y).add(right.mul(c.x.mul(size))).add(up.mul(c.y.mul(size)));
@@ -116,7 +116,7 @@ export class Wildlife {
     m.colorNode = Fn(() => {
       const r = length(uv().sub(0.5)).mul(2);
       const core = pow(max(float(1).sub(r), 0), 6).mul(3).add(pow(max(float(1).sub(r), 0), 2).mul(0.25));
-      return vec4(vec3(0.75, 1.0, 0.25).mul(core).mul(glow).mul(0.5), 1);
+      return vec4(vec3(0.75, 1.0, 0.25).mul(core).mul(glow).mul(0.9), 1);
     })();
     return new THREE.Mesh(items(N, QUAD, QUAD_TRIS), m);
   }

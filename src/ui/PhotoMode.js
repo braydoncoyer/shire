@@ -4,6 +4,7 @@
 
 import * as THREE from 'three/webgpu';
 import { heightAt } from '../world/Layout.js';
+import { EYE } from '../player/Player.js';
 
 const clock = (t) => {
   const h = Math.floor(t), m = Math.floor((t - h) * 60);
@@ -122,7 +123,7 @@ export class PhotoMode {
     this.saved = { fly: p.fly, timeSpeed: s.timeSpeed, exposure: s.exposure };
     if (!p.fly) {
       p.fly = true;
-      p.pos.y += 1.62;
+      p.pos.y += EYE;
       p.vel.set(0, 0, 0);
     }
     s.timeSpeed = 0;

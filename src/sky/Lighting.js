@@ -8,7 +8,7 @@ import { weatherU } from './Weather.js';
 import { evaluateLighting, luminance } from './Atmosphere.js';
 import { sunDirection, moonDirection } from './SunPosition.js';
 
-const MOON_COLOR = [0.55, 0.68, 1.0];
+const MOON_COLOR = [0.66, 0.72, 0.86];
 const MOON_E = 0.028;
 const INDOOR_EXPOSURE = 4.5;
 
@@ -77,7 +77,7 @@ export class Lighting {
     u.cloudDensity.value = s.cloudDensity;
     u.cirrus.value = s.cirrus;
 
-    const nightAmb = [0.0035, 0.0055, 0.011].map((c) => c * night);
+    const nightAmb = [0.0032, 0.0042, 0.0062].map((c) => c * night);
     const skyE = skyIrradiance.map((c, i) => c * (1 + overcast * 0.5) + nightAmb[i] * Math.PI);
     // Mean sky radiance lights the clouds from above; the ground bounce lights them from below.
     const groundAlbedo = [0.09, 0.13, 0.05];
@@ -118,6 +118,10 @@ export class Lighting {
     const Ldirect = luminance(col) * Math.max(dir[1], 0) * 0.75;
     const Lscene = (0.18 * (Ldirect + luminance(skyE))) / Math.PI;
     this.targetExposure = THREE.MathUtils.clamp(0.19 * Math.pow(Math.max(Lscene, 1e-6), -0.8), 0.05, 60);
+    // The dead of night (sun well below the horizon, past twilight) reads darker than the eye
+    // would fully adapt to.
+    const deep = THREE.MathUtils.smoothstep(-sunY, 0.2, 0.42);
+    this.targetExposure *= 1 - 0.55 * deep;
     // Indoors (the Green Dragon), the eye adapts to the lamplit room instead.
     this.indoorMix += ((this.indoor || 0) - this.indoorMix) * (dt > 0 ? 1 - Math.exp(-dt * 3) : 1);
     this.targetExposure = Math.exp(Math.log(this.targetExposure) * (1 - this.indoorMix) + Math.log(INDOOR_EXPOSURE) * this.indoorMix);

@@ -159,7 +159,7 @@ function sculpt(x, z, h) {
     for (const sd of [-1, 1]) {
       const cx = VISTA.ax + ux * 11 - uz * sd * 8.5, cz = VISTA.az + uz * 11 + ux * sd * 8.5;
       const a = (x - cx) * ux + (z - cz) * uz, b = (x - cx) * -uz + (z - cz) * ux;
-      h += 2.6 * Math.exp(-((a / 9) ** 2) - ((b / 4.2) ** 2));
+      h += 2.0 * Math.exp(-((a / 9) ** 2) - ((b / 4.2) ** 2)); // low enough to see over at hobbit height
     }
   }
   // The rounded hill beyond Bag End.

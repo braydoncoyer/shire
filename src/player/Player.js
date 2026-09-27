@@ -6,7 +6,9 @@ import { heightAt, surfaceAt, lakeFactor, LANDMARKS, WALK_RADIUS } from '../worl
 
 const groundAt = (x, z) => Math.max(heightAt(x, z), surfaceAt(x, z));
 
-const EYE = 1.62;
+// Eye height of a hobbit, who stands about three and a half feet (1.07 m): the inn's doorways
+// clear your head with room to spare.
+export const EYE = 1.0;
 const WALK = 3.4, SPRINT = 7.5, GRAVITY = 22, JUMP = 6.2;
 
 export class Player {

@@ -43,11 +43,11 @@ export class Post {
     let lit = hdr.add(bl);
     if (useDof) lit = dof(lit, scenePass.getViewZNode(), this.focus, this.focalLength, this.bokeh);
 
-    // Night vision: colors drain toward a cool blue as the eye shifts to rod vision. Bright light
+    // Night vision: colors drain toward a faint cool grey as the eye shifts to rod vision. Bright light
     // sources (lamps, windows) stay in color vision, and indoors lamplight keeps the eye in it.
     const lum = lit.r.mul(0.2126).add(lit.g.mul(0.7152)).add(lit.b.mul(0.0722));
     const rods = this.sky.u.night.mul(0.7).mul(float(1).sub(smoothstep(0.06, 0.3, lum))).mul(float(1).sub(this.indoor));
-    const graded = mix(lit.rgb, vec3(0.55, 0.72, 1.0).mul(lum), rods);
+    const graded = mix(lit.rgb, vec3(0.72, 0.8, 0.95).mul(lum), rods);
 
     const mapped = renderOutput(graded);
     const vig = float(1).sub(smoothstep(0.45, 1.05, length(screenUV.sub(0.5).mul(1.35))).mul(0.3));

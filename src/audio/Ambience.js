@@ -8,6 +8,7 @@
 
 import { lakeDist, streamMask, laneMask, surfaceAt, BRIDGE } from '../world/Layout.js';
 import { weatherU } from '../sky/Weather.js';
+import { EYE } from '../player/Player.js';
 
 const smooth = (a, b, x) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -292,7 +293,7 @@ export class Ambience {
     const day = smooth(-0.06, 0.08, sunY);
     const night = 1 - smooth(-0.12, -0.02, sunY);
     const indoor = app.lighting.indoorMix;
-    const height = Math.max(0, app.camera.position.y - app.player.pos.y - 1.62);
+    const height = Math.max(0, app.camera.position.y - app.player.pos.y - EYE);
 
     // Indoors the world outside goes quiet and dull.
     set(this.outdoor.gain, 1 - indoor * 0.8);

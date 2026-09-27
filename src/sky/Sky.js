@@ -212,7 +212,7 @@ export class Sky {
       const sky = this.sampleSky(normalize(vec3(dir.x, max(dir.y, 0.012), dir.z))).toVar();
       const night = u.night;
       // Faint airglow so the night sky isn't pure black.
-      sky.addAssign(vec3(0.0012, 0.002, 0.0045).mul(night).mul(smoothstep(-0.2, 0.4, dir.y).mul(0.6).add(0.4)));
+      sky.addAssign(vec3(0.0012, 0.0016, 0.0026).mul(night).mul(smoothstep(-0.2, 0.4, dir.y).mul(0.6).add(0.4)));
 
       // Sun disc with limb darkening. Its radiance is clamped to keep bloom well behaved.
       const cosSun = dot(dir, u.sunDir);
@@ -342,7 +342,7 @@ export class Sky {
       const vp = cameraProjectionMatrixInverse.mul(vec4(ndc, 0.5, 1));
       const dir = normalize(cameraWorldMatrix.mul(vec4(vp.xyz.div(vp.w), 0)).xyz).toVar();
       const isMain = length(cameraPosition.sub(u.camPos)).lessThan(0.05);
-      const clear = vec4(this.sampleSky(dir).add(vec3(0.0012, 0.002, 0.0045).mul(u.night)), 1);
+      const clear = vec4(this.sampleSky(dir).add(vec3(0.0012, 0.0016, 0.0026).mul(u.night)), 1);
       const sky = select(isMain, texture(this.skyRT.texture, screenUV), clear).toVar();
       const night = u.night;
 
@@ -392,7 +392,7 @@ export class Sky {
       const odH = sigma0.mul(exp(max(cameraPosition.y, 0).negate().div(H))).mul(dist).mul(integ);
       const T = exp(odR.add(vec3(odH)).negate());
       const hdir = normalize(vec3(d.x, max(d.y, 0.035), d.z));
-      const fogCol = this.sampleSky(hdir).add(vec3(0.0012, 0.002, 0.0045).mul(u.night));
+      const fogCol = this.sampleSky(hdir).add(vec3(0.0012, 0.0016, 0.0026).mul(u.night));
       const hazed = mix(fogCol, output.rgb, T);
       // Ground mist (dawn, after rain): a thin layer a few meters deep over the valley floor and the
       // lake, pale grey, lit like the sky around it.
