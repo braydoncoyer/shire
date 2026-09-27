@@ -51,7 +51,7 @@ export class App {
     if (!renderer.backend.isWebGPUBackend) throw new Error('WebGPU is required');
 
     const scene = (this.scene = new THREE.Scene());
-    const camera = (this.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 9000));
+    const camera = (this.camera = new THREE.PerspectiveCamera(this.settings.fov, innerWidth / innerHeight, 0.1, 9000));
 
     progress('Painting the sky');
     await tick();

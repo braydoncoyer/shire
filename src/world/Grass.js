@@ -20,6 +20,7 @@ import {
 } from 'three/tsl';
 import { WATER_Y, LANDMARKS, BRIDGE } from './Layout.js';
 import { LAYERS } from '../core/Layers.js';
+import { paddockNode } from './Farmland.js';
 
 const PF = LANDMARKS.partyField;
 
@@ -175,6 +176,9 @@ export class Grass {
     const n1 = maps.noise(xz, 31);
     const n2 = maps.noise(xz, 6.5);
     const aboveWater = smoothstep(WATER_Y + 0.05, WATER_Y + 0.35, ground);
+    // Nothing grows on ploughed fields; paddocks gone to hay are paler.
+    const pd = paddockNode(xz);
+    const unploughed = float(1).sub(pd.x);
 
     if (L.kind === 'reed') {
       // A band along the lake shore and the stream banks, in clumps.
@@ -183,7 +187,7 @@ export class Grass {
       const streamBand = smoothstep(0.12, 0.35, lanes.g).mul(float(1).sub(smoothstep(0.55, 0.8, lanes.g)));
       const clump = smoothstep(0.35, 0.6, n2.r.mul(0.6).add(maps.noise(xz, 13).g.mul(0.5)));
       const band = max(lakeBand, streamBand).mul(clump).mul(float(1).sub(smoothstep(0.02, 0.2, lanes.r)));
-      const hgt = band.mul(h[2].mul(0.7).add(0.9)).mul(step(0.2, band));
+      const hgt = band.mul(h[2].mul(0.7).add(0.9)).mul(step(0.2, band)).mul(unploughed);
       const col = mix(color(0x4c6a22), color(0x7a8a38), h[2]).toVar();
       return { hgt, col };
     }
@@ -205,7 +209,7 @@ export class Grass {
       const flowerBed = smoothstep(0.7, 0.9, lanes.a);
       const meadowDensity = drift.mul(float(1).sub(mown.mul(0.8))).mul(float(1).sub(lanes.b));
       const density = max(meadowDensity, flowerBed.mul(0.95)).mul(float(1).sub(smoothstep(0.02, 0.3, lanes.r))).mul(dryLand).mul(aboveWater);
-      const hgt = step(h[5].mul(0.75).add(0.05), density).mul(h[2].mul(0.25).add(0.3));
+      const hgt = step(h[5].mul(0.75).add(0.05), density.mul(unploughed)).mul(h[2].mul(0.25).add(0.3));
       const col = tint.mul(h[4].mul(0.25).add(0.85));
       return { hgt, col };
     }
@@ -224,7 +228,9 @@ export class Grass {
     const col = mix(GRASS.lush, GRASS.bright, h[2].mul(0.6).add(n1.g.mul(0.5)).sub(0.1).saturate()).toVar();
     col.assign(mix(col, GRASS.deep, smoothstep(0.55, 0.8, n2.r).mul(0.45)));
     col.assign(mix(col, GRASS.seed, meadow.mul(h[5]).mul(0.35)));
-    return { hgt, col };
+    col.assign(mix(col, GRASS.seed, pd.y.mul(0.45)));
+    col.mulAssign(pd.w.mul(0.25).add(1));
+    return { hgt: hgt.mul(step(0.5, unploughed)), col };
   }
 
   _cullCompute(layer) {

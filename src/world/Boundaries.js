@@ -5,6 +5,7 @@ import * as THREE from 'three/webgpu';
 import { Builder, mtx, box } from './Kit.js';
 import { GEO, heightAt, yardAt, laneMask, lakeFactor, HOLES, LANES, VILLAGE, LANE_STAIRS, LANDMARKS } from './Layout.js';
 import { mulberry32, fbm2 } from '../util/noise.js';
+import { PADDOCK_GRID, farmWeight } from './Farmland.js';
 
 const WEATHERED = 0x7d6e5a, POST = 0x6a5a48;
 
@@ -27,6 +28,42 @@ const nearHole = (x, z) => HOLES.some((h) => {
   const u = dx * h.fx + dz * h.fz;
   return u < 1.5 && Math.hypot(dx, dz) < h.width / 2 + 4; // behind the facade: the turf mound
 });
+
+/**
+ * Post-and-rail fences along the paddock edges within a few hundred meters of the Green Dragon
+ * (farther out, hedgerow lines on the ground stand in for them), with a gap here and there.
+ */
+function paddockFences(rand) {
+  const { CA, SA, CW, rows, cx, cz, R } = PADDOCK_GRID;
+  const lines = [];
+  const toXZ = (u, v) => [u * CA - v * SA, u * SA + v * CA];
+  const keep = (x, z) => Math.hypot(x - cx, z - cz) < R && farmWeight(x, z) > 0.7;
+  const run = (pts) => {
+    // Split into runs of points that are kept; drop a few runs for gates and gaps.
+    let cur = [];
+    for (const p of pts) {
+      if (keep(p[0], p[1])) cur.push(p);
+      else { if (cur.length > 1) lines.push(cur); cur = []; }
+    }
+    if (cur.length > 1) lines.push(cur);
+  };
+  const u0 = cx * CA + cz * SA, v0 = -cx * SA + cz * CA;
+  for (let col = Math.floor((u0 - R) / CW); col <= Math.ceil((u0 + R) / CW); col++) {
+    if (rand() < 0.85) {
+      const pts = [];
+      for (let v = v0 - R; v <= v0 + R; v += 4) pts.push(toXZ(col * CW, v));
+      run(pts);
+    }
+    const { off, rowH } = rows(col);
+    for (let row = Math.floor((v0 - R + off) / rowH); row <= Math.ceil((v0 + R + off) / rowH); row++) {
+      if (rand() < 0.2) continue;
+      const pts = [];
+      for (let u = col * CW; u <= (col + 1) * CW; u += 4) pts.push(toXZ(u, row * rowH - off));
+      run(pts);
+    }
+  }
+  return lines;
+}
 
 export class Boundaries {
   constructor(mats, shrubs) {
@@ -89,8 +126,9 @@ export class Boundaries {
       }
     }
 
-    // Fences: posts every 2.4 m with two rails following the ground.
-    for (const line of GEO.fences) {
+    // Fences: posts every 2.4 m with two rails following the ground; where OpenStreetMap has them
+    // and round the paddocks out on the farms.
+    for (const line of [...GEO.fences, ...paddockFences(rand)]) {
       let prev = null;
       walk(line, 2.4, (x, z) => {
         const y = heightAt(x, z);

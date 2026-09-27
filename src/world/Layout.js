@@ -89,7 +89,9 @@ function rawDEM(x, z) {
 }
 function demHeight(x, z) {
   const h = rawDEM(x, z);
-  return h > WATER_Y ? WATER_Y + (h - WATER_Y) * RELIEF : h;
+  // The hills round the valley stand taller on film than the survey has them.
+  const far = 1 + 0.9 * smoothstep(320, 900, Math.hypot(x - VILLAGE.x, z - VILLAGE.z));
+  return h > WATER_Y ? WATER_Y + (h - WATER_Y) * RELIEF * far : h;
 }
 
 /**
@@ -114,13 +116,13 @@ function sculpt(x, z, h) {
     const stepped = (i + smoothstep(0.55, 0.95, t)) * T - fbm2(x / 45, z / 45, 2) * 1.2;
     h = lerp(h, stepped, w * 0.85);
   }
-  // The steep grassy bank that rises behind the Green Dragon (away from the bridge), with its
-  // paddock fences along the top.
+  // Behind the Green Dragon (away from the bridge) the pasture rises gently to a skyline of
+  // paddock fences, as on film: a long, low swell rather than a bank.
   if (GD_BANK) {
     const dx = x - GD_BANK.x, dz = z - GD_BANK.z;
     const back = -(dx * GD_BANK.fx + dz * GD_BANK.fz), side = dx * GD_BANK.fz - dz * GD_BANK.fx;
     const dp = polyDistSimple(GD_BANK.poly, x, z);
-    h += 17 * smoothstep(5, 30, dp) * smoothstep(-6, 8, back) * (1 - smoothstep(40, 80, Math.abs(side))) * smoothstep(4, 28, lakeDist(x, z));
+    h += 6 * smoothstep(10, 110, dp) * smoothstep(-6, 20, back) * (1 - smoothstep(50, 110, Math.abs(side))) * smoothstep(4, 28, lakeDist(x, z));
   }
   // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
   // Centered a few meters behind the oak (away from Bag End), so the house sits on its flank.

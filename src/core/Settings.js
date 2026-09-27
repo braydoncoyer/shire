@@ -23,6 +23,7 @@ export class Settings {
     for (const [k, prop] of Object.entries(map)) if (q.has(k)) this[prop] = parseFloat(q.get(k));
     this.cam = q.has('cam') ? q.get('cam').split(',').map(parseFloat) : null;
     this.fly = q.has('fly');
+    this.fov = q.has('fov') ? parseFloat(q.get('fov')) : 62;
     this.shot = q.has('shot'); // headless screenshot mode: no pointer-lock prompt
   }
 }

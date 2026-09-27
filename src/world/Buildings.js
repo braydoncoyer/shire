@@ -54,6 +54,7 @@ export class Buildings {
   // ---------------------------------------------------------------------------------------------
 
   _bridge(B) {
+    const jit = (a, b, k) => { const v = Math.sin(a * 12.9898 + b * 78.233 + k * 37.719) * 43758.5453; return v - Math.floor(v) - 0.5; };
     const Br = BRIDGE;
     const base = new THREE.Matrix4().makeRotationY(Br.yaw).setPosition(Br.x, 0, Br.z);
     const at = (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(x, y, z, rx, ry, rz));
@@ -78,15 +79,15 @@ export class Buildings {
       hole.closePath();
       shape.holes.push(hole);
     }
-    B.add('stone', new THREE.ExtrudeGeometry(shape, { depth: W, bevelEnabled: false, curveSegments: 24 }), at(0, 0, -W / 2), STONE);
+    B.add('masonry', new THREE.ExtrudeGeometry(shape, { depth: W, bevelEnabled: false, curveSegments: 24 }), at(0, 0, -W / 2), 0xb3ada1);
     for (const cx of cxs)
-      for (const s of [-1, 1]) B.add('stone', new THREE.TorusGeometry(r + 0.16, 0.18, 6, 24, Math.PI), at(cx, spring, s * (W / 2 + 0.02)), STONE_DARK);
+      for (const s of [-1, 1]) B.add('masonry', new THREE.TorusGeometry(r + 0.16, 0.18, 6, 24, Math.PI), at(cx, spring, s * (W / 2 + 0.02)), 0x938d82);
 
     // Gravel deck: the lane runs straight over.
     for (let i = 0; i < N; i++) {
       const t0 = -Br.half + (2 * Br.half * i) / N, t1 = t0 + (2 * Br.half) / N;
       const y0 = bridgeDeck(t0), y1 = bridgeDeck(t1);
-      B.add('plaster', box(t1 - t0 + 0.02, 0.12, W - 0.9), at((t0 + t1) / 2, (y0 + y1) / 2 - 0.05, 0, 0, 0, Math.atan2(y1 - y0, t1 - t0)), 0xb09c7c);
+      B.add('rock', box(t1 - t0 + 0.02, 0.12, W - 0.9), at((t0 + t1) / 2, (y0 + y1) / 2 - 0.05, 0, 0, 0, Math.atan2(y1 - y0, t1 - t0)), 0x857a68);
     }
 
     // Thick, low parapets with big flat capstones; at each end they splay outward.
@@ -111,8 +112,13 @@ export class Buildings {
         const ya = deck(t0), yb = deck(t1), ym = (ya + yb) / 2;
         const tilt = Math.atan2(yb - ya, len);
         const mid = at((t0 + t1) / 2, 0, s * (w0 + w1) / 2, 0, -s * ang, 0);
-        B.add('stone', box(len + 0.04, ph + 0.6, pw), mid.clone().multiply(mtx(0, ym + ph / 2 - 0.3, 0, 0, 0, tilt)), STONE);
-        B.add('stone', box(len + 0.06, 0.14, pw + 0.12), mid.clone().multiply(mtx(0, ym + ph + 0.07, 0, 0, 0, tilt)), 0xc2bcae);
+        B.add('masonry', box(len + 0.04, ph + 0.6, pw), mid.clone().multiply(mtx(0, ym + ph / 2 - 0.3, 0, 0, 0, tilt)), 0xb3ada1);
+        // Capstones: big slabs, each laid a little askew.
+        const nCap = Math.max(1, Math.round(len / 0.85));
+        for (let c = 0; c < nCap; c++) {
+          const off = ((c + 0.5) / nCap - 0.5) * len;
+          B.add('masonry', box(len / nCap - 0.03, 0.18, pw + 0.16), mid.clone().multiply(mtx(0, ym + ph + 0.09, 0, 0, 0, tilt)).multiply(mtx(off, 0, 0, jit(i, c, 1) * 0.04, jit(i, c, 2) * 0.05, jit(i, c, 3) * 0.03)), 0x8e887c);
+        }
       }
       const [cxw, czw] = [Br.x + Br.dz * s * inner, Br.z - Br.dx * s * inner];
       this.colliders.push({ x: cxw, z: czw, hx: Br.half, hz: pw / 2, rot: Br.yaw });

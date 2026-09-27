@@ -7,7 +7,7 @@ import { chunk } from './Chunks.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   Fn, uv, vec2, vec3, float, mix, smoothstep, fract, abs, sin, attribute, color, texture, positionWorld,
-  mx_worley_noise_vec2, mx_fractal_noise_float, uniform, max, floor, hash, step, vec4, saturate, fwidth,
+  mx_worley_noise_vec2, mx_fractal_noise_float, uniform, max, floor, hash, step, vec4, saturate, fwidth, bumpMap, min,
 } from 'three/tsl';
 
 // ---------------------------------------------------------------------------------------------
@@ -29,6 +29,33 @@ export function makeMaterials(sky, noiseTex, lampLight) {
     const rock = vcol.mul(tone).mul(speck).mul(smoothstep(0.0, 0.25, edge).mul(0.35).add(0.65));
     return mix(rock, vec3(0.42, 0.4, 0.36).mul(vcol.g.add(0.4)), mortar.mul(0.85));
   })();
+
+  // Coursed rubble (the bridge): rows of long, flattish stones of uneven length, each its own
+  // tone, in thin dark joints, weathered with lichen and moss low down. uv in meters.
+  const masonry = new THREE.MeshStandardNodeMaterial({ roughness: 0.92 });
+  const stoneCell = Fn(() => {
+    const p = uv().add(texture(noiseTex, uv().mul(0.07)).b.sub(0.5).mul(0.1));
+    const rowH = 0.24;
+    const row = floor(p.y.div(rowH));
+    const rh = hash(row.add(311));
+    const len = rh.mul(0.45).add(0.38);
+    const x = p.x.div(len).add(rh.mul(7.1));
+    const col = floor(x);
+    const fx = fract(x).mul(len), fy = fract(p.y.div(rowH)).mul(rowH);
+    const edge = min(min(fx, len.sub(fx)), min(fy, float(rowH).sub(fy)));
+    return vec2(hash(col.add(row.mul(57)).add(19)), edge);
+  });
+  masonry.colorNode = Fn(() => {
+    const c = stoneCell();
+    const joint = float(1).sub(smoothstep(0.008, 0.028, c.y));
+    const face = vcol.mul(c.x.mul(0.42).add(0.72)).mul(smoothstep(0.0, 0.06, c.y).mul(0.25).add(0.75));
+    const grain = texture(noiseTex, uv().mul(1.9)).a.mul(0.3).add(0.82);
+    const lichen = smoothstep(0.6, 0.78, texture(noiseTex, uv().mul(0.6)).g);
+    const moss = smoothstep(0.55, 0.8, texture(noiseTex, uv().mul(0.35)).r).mul(float(1).sub(smoothstep(2.2, 3.4, positionWorld.y)));
+    const col = mix(face.mul(grain), vec3(0.62, 0.62, 0.5), lichen.mul(0.35));
+    return mix(mix(col, vec3(0.2, 0.26, 0.12), moss.mul(0.55)), vec3(0.12, 0.11, 0.1), joint.mul(0.85));
+  })();
+  masonry.normalNode = bumpMap(Fn(() => smoothstep(0.0, 0.05, stoneCell().y))(), 1.2);
 
   // Wood: long grain along uv.y, tinted by vertex color (natural oak or paint).
   const wood = new THREE.MeshStandardNodeMaterial({ roughness: 0.85 });
@@ -81,20 +108,29 @@ export function makeMaterials(sky, noiseTex, lampLight) {
   // Thatch: bundles of straw running down the slope (uv.y), laid in overlapping courses, greyed and
   // mossy with age. uv is in meters.
   const thatch = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide });
+  // Straw laid down the slope (uv.y, meters from the eave): long streaks, fine stalks, faint
+  // courses; weathered grey-brown with warmer, fresher patches and moss in the damp.
+  const thatchHeight = Fn(() => {
+    const p = uv();
+    const wide = texture(noiseTex, vec2(p.x.mul(2.2), p.y.mul(0.1))).a;
+    const streak = texture(noiseTex, vec2(p.x.mul(8), p.y.mul(0.35))).b;
+    const stalk = texture(noiseTex, vec2(p.x.mul(36), p.y.mul(1.3))).g;
+    const course = fract(p.y.mul(1.35).add(texture(noiseTex, p.mul(vec2(0.25, 0.08))).r.mul(0.8)));
+    return wide.mul(0.4).add(streak.mul(0.35)).add(stalk.mul(0.2)).add(smoothstep(0.0, 0.3, course).mul(0.08));
+  });
   thatch.colorNode = Fn(() => {
     const p = uv();
-    const course = fract(p.y.mul(1.6).add(texture(noiseTex, p.mul(vec2(0.3, 0.1))).r.mul(0.6)));
-    const strands = texture(noiseTex, vec2(p.x.mul(14), p.y.mul(1.4))).a;
-    const fine = texture(noiseTex, vec2(p.x.mul(40), p.y.mul(3))).b;
-    const clump = texture(noiseTex, p.mul(vec2(0.6, 0.35))).g;
-    // Old reed thatch weathers to grey-brown; fresher patches are warmer, moss darkens the hollows.
-    const base = mix(color(0x3e372c), color(0x7c6d52), strands.mul(0.6).add(fine.mul(0.4)).saturate());
-    const warm = mix(base, color(0xa38a5c), smoothstep(0.6, 0.85, clump).mul(0.35));
-    const moss = mix(warm, color(0x4a5230), smoothstep(0.1, 0.3, clump).mul(0.3));
-    const shade = smoothstep(0.0, 0.3, course).mul(0.4).add(0.6);
-    const streak = texture(noiseTex, vec2(p.x.mul(22), p.y.mul(0.5))).a.mul(0.35).add(0.75);
-    return moss.mul(shade).mul(streak).mul(vcol);
+    const hgt = thatchHeight();
+    const clump = texture(noiseTex, p.mul(vec2(0.45, 0.3))).g;
+    const age = texture(noiseTex, p.mul(vec2(0.1, 0.07))).r;
+    const straw = mix(color(0x29241d), color(0x7a684a), smoothstep(0.3, 0.72, hgt));
+    const grey = mix(straw, straw.dot(vec3(0.33)).mul(vec3(0.95, 0.95, 0.92)), smoothstep(0.45, 0.7, age).mul(0.5));
+    const fresh = mix(grey, color(0xa88c5c).mul(hgt.add(0.3)), smoothstep(0.62, 0.85, float(1).sub(age)).mul(0.3));
+    const moss = mix(fresh, color(0x485230).mul(hgt.mul(0.6).add(0.6)), smoothstep(0.12, 0.28, clump).mul(0.35));
+    // Darker in the drip line near the eave.
+    return moss.mul(smoothstep(0.0, 1.2, p.y).mul(0.2).add(0.8)).mul(vcol);
   })();
+  thatch.normalNode = bumpMap(thatchHeight(), 2.5);
 
   // Turf: the grassy hood that overhangs hobbit-hole facades. Hanging strands, darker underneath.
   const turf = new THREE.MeshStandardNodeMaterial({ roughness: 1 });
@@ -152,10 +188,10 @@ export function makeMaterials(sky, noiseTex, lampLight) {
   const pane = new THREE.MeshStandardNodeMaterial({ roughness: 0.06, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
   pane.colorNode = vec3(0.1, 0.12, 0.1);
 
-  const mats = { stone, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
+  const mats = { stone, masonry, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
   // Lamplight after dark on every diffuse surface.
   if (lampLight)
-    for (const m of [stone, wood, paint, brick, roof, plaster, thatch, turf, fringe, straw, rock])
+    for (const m of [stone, masonry, wood, paint, brick, roof, plaster, thatch, turf, fringe, straw, rock])
       m.emissiveNode = lampLight.emission(m.colorNode.rgb, positionWorld);
   mats.flicker = flicker;
   return mats;
@@ -390,7 +426,7 @@ export function polyEdges(poly, y) {
  * ridges form along the middle of every wing by themselves. `overhang` pushes the eaves out past
  * the walls; the edge gets a thick rounded lip. World space; uv in meters.
  */
-export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 11, res = 0.5, lip = 0.45 }) {
+export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 11, res = 0.5, lip = 0.45, eyebrows = [] }) {
   const p = cleanPoly(poly);
   let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
   for (const [x, z] of p) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); }
@@ -401,6 +437,17 @@ export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 1
   const height = (d) => {
     const t = Math.min(-d / reach, 1);
     return eaveY + rise * (1 - Math.pow(1 - t, 1.7));
+  };
+  // Eyebrows: the thatch lifts in a smooth wave over a window at the eave, easing back into the
+  // slope a few meters up. Each is { x, z (on the wall line), tx, tz (along the wall), w, h }.
+  const lift = (x, z, d) => {
+    let y = 0;
+    for (const b of eyebrows) {
+      const a = (x - b.x) * b.tx + (z - b.z) * b.tz;
+      const up = Math.max(0, -d - overhang);
+      y += b.h * Math.exp(-2 * (a / b.w) ** 2) * (1 - smoothstep01(0, 3.2, up));
+    }
+    return y;
   };
   const pos = [], uv = [], idx = [];
   const vid = new Int32Array(nx * nz).fill(-1);
@@ -416,7 +463,7 @@ export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 1
       x -= (gx / gl) * d; z -= (gz / gl) * d; d = 0;
     }
     vid[k] = pos.length / 3;
-    pos.push(x, height(Math.min(d, 0)), z);
+    pos.push(x, height(Math.min(d, 0)) + lift(x, z, D[k] > 0 ? 0 : D[k]), z);
     uv.push(x * 0.7 + z * 0.3, -d);
     return vid[k];
   };
@@ -434,8 +481,8 @@ export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 1
     const x = pos[v * 3], z = pos[v * 3 + 2];
     const d = -(polyDist(p, x, z) - overhang);
     const course = (d / 0.75) % 1;
-    const lump = Math.sin(x * 1.7 + Math.sin(z * 0.9) * 2) * Math.sin(z * 1.3 + x * 0.4) * 0.09;
-    pos[v * 3 + 1] += (1 - course) * 0.1 + lump;
+    const lump = Math.sin(x * 1.7 + Math.sin(z * 0.9) * 2) * Math.sin(z * 1.3 + x * 0.4) * 0.07;
+    pos[v * 3 + 1] += (1 - course) * 0.035 + lump;
   }
   // Thick lip: drop the outermost ring of vertices a little so the eave curls down.
   for (const v of edgeVerts) {
@@ -451,6 +498,10 @@ export function footprintRoof(poly, { eaveY, overhang = 0.9, rise = 5, reach = 1
   g.userData.heightAt = (x, z) => height(Math.min(polyDist(p, x, z) - overhang, 0));
   return g;
 }
+const smoothstep01 = (a, b, t) => {
+  const x = Math.min(1, Math.max(0, (t - a) / (b - a)));
+  return x * x * (3 - 2 * x);
+};
 
 /** A flat shape extruded `depth` (centered on z = 0), uvs in meters. */
 export function slab(shape, depth, curveSegments = 12) {
