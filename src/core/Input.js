@@ -8,6 +8,7 @@ export class Input {
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.locked = false;
+    this.blockLock = false; // the tour has the camera: a click pauses it instead
     this.listeners = new Set();
 
     addEventListener('keydown', (e) => {
@@ -21,7 +22,7 @@ export class Input {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     canvas.addEventListener('click', () => {
-      if (!this.locked) canvas.requestPointerLock?.();
+      if (!this.locked && !this.blockLock) canvas.requestPointerLock?.();
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;

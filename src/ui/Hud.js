@@ -23,6 +23,18 @@ export class Hud {
     });
     canvas.addEventListener('click', () => app.audio.resume());
     document.getElementById('start-settings').addEventListener('click', () => app.panel.open());
+    // Take the tour: pick its length.
+    const tourBtn = document.getElementById('start-tour'), choice = document.getElementById('tour-choice');
+    tourBtn.addEventListener('click', () => {
+      choice.hidden = !choice.hidden;
+      tourBtn.setAttribute('aria-expanded', String(!choice.hidden));
+    });
+    for (const kind of ['full', 'short'])
+      document.getElementById(`tour-${kind}`).addEventListener('click', () => {
+        choice.hidden = true;
+        tourBtn.setAttribute('aria-expanded', 'false');
+        app.tour.start(kind);
+      });
     document.getElementById('start-photo').addEventListener('click', () => app.photo.enter());
     app.input.onLockChange((locked) => {
       if (locked) this.started = true;
@@ -36,7 +48,7 @@ export class Hud {
   /** Show the start overlay whenever the mouse is free and nothing else is open. */
   refresh() {
     const app = this.app;
-    this.start.hidden = app.settings.shot || app.input.locked || app.panel?.isOpen || app.photo?.active;
+    this.start.hidden = app.settings.shot || app.input.locked || app.panel?.isOpen || app.photo?.active || app.tour?.active;
     this.eyebrow.textContent = this.started ? 'Paused' : 'A walk in Hobbiton';
     this.go.textContent = this.started ? 'Carry on walking' : 'Enter the Shire';
     this.fps.hidden = !app.settings.showFps || app.photo?.active;

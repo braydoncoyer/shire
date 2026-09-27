@@ -28,12 +28,23 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 | M | Mute |
 | ` | FPS readout |
 
+## The tour
+
+**Take the tour** on the start screen for a guided walk, like the tour of the set: a glide over the
+lake into Gandalf's Cutting, then on foot past the view up to Bag End, the Party Field set for
+Bilbo's birthday, Bagshot Row, Bag End and the view from its gate, the Party Tree, the Merry Meander,
+the Mill and the bridge, while the afternoon turns to night. It ends at the Green Dragon watching
+Gandalf's fireworks over the water, then goes in to the fire. The full tour takes about eight
+minutes, the short one about four. Any key or click pauses it; from there you can carry on, start
+again, or walk on by yourself.
+
 ## Settings
 
 - **Graphics presets:** Low, Medium, High (the default) and Ultra. You can also adjust each setting
   on its own: render scale, sharpness on high-DPI screens, MSAA, shadow detail, how far the grass
   reaches, tree detail distance, sky and cloud resolution, and lake reflections.
-- **Time and weather:** time of day, the length of a day, the weather, clouds, haze and wind.
+- **Time and weather:** time of day, the length of a day, the weather, clouds, haze and wind, and
+  whether Gandalf's fireworks go up over the lake at ten each clear night (or launch them now).
 - **View, controls and sound:** field of view, mouse sensitivity, invert Y, frame rate readout,
   volume and mute.
 - Every change is saved in the browser and remembered next visit, including a sky set by hand, and
@@ -86,7 +97,7 @@ Outdoor sounds are muffled inside the inn.
 
 (`speed` is in-game minutes per real second; the default 2.4 is a 10-minute day. Headless shots (`?shot`) hold the time and the sky
 still unless you pass `speed` or `weather`. `&fireworks` starts a fireworks show on load, and `&fwt=30` starts it
-30 seconds in.)
+30 seconds in. `&tour=full` (or `short`) starts the guided tour on load, and `&tt=120` starts it two minutes in.)
 
 ## Deploying
 

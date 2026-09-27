@@ -259,10 +259,53 @@
       }
       #toast.on { opacity: 1; transform: translate(-50%, 0); }
 
+      /* ---------------------------------------------------------------------------------------
+         Tour mode */
+      #tour { position: fixed; inset: 0; z-index: 4; pointer-events: none; }
+      #tour-caption {
+        position: absolute; left: var(--edge); bottom: calc(var(--edge) + 10px); max-width: 520px;
+        opacity: 0; transform: translateY(8px); transition: opacity 0.9s var(--ease), transform 0.9s var(--ease);
+      }
+      #tour-caption.on { opacity: 1; transform: none; }
+      #tour-caption h2 {
+        margin: 0; font-family: var(--serif); font-weight: 500; line-height: 1; font-size: clamp(34px, 5vw, 54px);
+        text-shadow: 0 2px 24px rgba(0, 0, 0, 0.5);
+      }
+      #tour-caption p:last-child {
+        margin: 12px 0 0; max-width: 440px; font-size: 14.5px; line-height: 1.55; color: var(--ink-2);
+        text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
+      }
+      #tour-caption p:last-child:empty { display: none; }
+      #tour .shade {
+        position: absolute; inset: auto 0 0 0; height: 45vh;
+        background: radial-gradient(90% 100% at 0% 100%, rgba(6, 8, 5, 0.55) 0%, rgba(6, 8, 5, 0.2) 45%, transparent 75%);
+      }
+      #tour .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(243, 236, 216, 0.1); }
+      #tour .bar i {
+        position: absolute; inset: 0; transform-origin: left; transform: scaleX(0);
+        background: linear-gradient(90deg, #b8923d, var(--accent-hi)); box-shadow: 0 0 10px rgba(217, 180, 90, 0.5);
+      }
+      #tour .hint {
+        position: absolute; right: var(--edge); bottom: calc(var(--edge) + 10px); margin: 0;
+        font-size: 12px; color: var(--ink-3); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+      }
+      #tour-fade { position: fixed; inset: 0; z-index: 7; background: #000; opacity: 0; pointer-events: none; }
+      #tour-menu {
+        position: fixed; inset: 0; z-index: 8;
+        background:
+          radial-gradient(80% 70% at 0% 100%, rgba(6, 8, 5, 0.72) 0%, rgba(6, 8, 5, 0.35) 45%, transparent 75%),
+          linear-gradient(0deg, rgba(6, 8, 5, 0.35), transparent 40%);
+        animation: fade 0.4s var(--ease);
+      }
+      #tour-menu h1 { font-size: clamp(44px, 6.5vw, 72px); }
+      #tour-choice { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+      #tour-choice .pill { flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 9px 18px; border-radius: 14px; }
+      #tour-choice .pill small { font-size: 11px; font-weight: 400; color: var(--ink-3); }
       @media (max-width: 640px) {
         .keys { grid-template-columns: repeat(2, auto); }
         .panel { top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; height: 64vh; }
         #photo-hint { display: none; }
+        #tour .hint { display: none; }
       }
       @media (max-height: 620px) {
         .keys { display: none; }
@@ -333,8 +376,13 @@
         <p class="lede">A first-person walk through Hobbiton, built entirely in your browser. Wander the lanes, stop by the Green Dragon, and watch the days and weather go by.</p>
         <div class="actions">
           <button class="pill primary" id="start-go">Enter the Shire</button>
+          <button class="pill" id="start-tour" aria-expanded="false" aria-controls="tour-choice">Take the tour</button>
           <button class="pill" id="start-settings">Settings</button>
           <button class="pill" id="start-photo">Photo mode</button>
+        </div>
+        <div id="tour-choice" hidden>
+          <button class="pill" id="tour-full">Full tour<small>About 8 minutes</small></button>
+          <button class="pill" id="tour-short">Short tour<small>About 4 minutes</small></button>
         </div>
         <div class="keys">
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Walk</span></div>
@@ -346,6 +394,30 @@
           <div><kbd>Tab</kbd><span>Settings</span></div>
           <div><kbd>P</kbd><span>Photo mode</span></div>
           <div><kbd>Esc</kbd><span>Free the mouse</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="tour" hidden>
+      <div class="shade"></div>
+      <div id="tour-caption" aria-live="polite">
+        <p class="eyebrow" id="tour-step"></p>
+        <h2 id="tour-title"></h2>
+        <p id="tour-line"></p>
+      </div>
+      <p class="hint">Press any key or click to pause</p>
+      <div class="bar"><i id="tour-progress"></i></div>
+    </div>
+    <div id="tour-fade"></div>
+    <div id="tour-menu" hidden>
+      <div class="corner">
+        <p class="eyebrow" id="tour-menu-eyebrow">Tour paused</p>
+        <h1 id="tour-menu-title">The tour</h1>
+        <p class="lede" id="tour-menu-line"></p>
+        <div class="actions">
+          <button class="pill primary" id="tour-resume">Carry on</button>
+          <button class="pill" id="tour-walk">Walk from here</button>
+          <button class="pill" id="tour-restart">Start again</button>
         </div>
       </div>
     </div>

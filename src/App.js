@@ -23,6 +23,7 @@ import { Ambience } from './audio/Ambience.js';
 import { Weather } from './sky/Weather.js';
 import { Rain } from './sky/Rain.js';
 import { Fireworks } from './sky/Fireworks.js';
+import { Tour } from './tour/Tour.js';
 import { weatherU } from './sky/Weather.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
@@ -160,6 +161,7 @@ export class App {
     this.hud = new Hud(this);
     this.panel = new Panel(this);
     this.photo = new PhotoMode(this);
+    this.tour = new Tour(this);
     this.audio = new Ambience(this);
 
     addEventListener('resize', () => this.resize());
@@ -214,6 +216,10 @@ export class App {
     if (this.settings.fireworksNow !== null) {
       this.fireworks.start();
       for (let t = 0; t < this.settings.fireworksNow; t += 1 / 30) this.fireworks.update(1 / 30, { hour: this.settings.time, rain: 0, enabled: false });
+    }
+    if (this.settings.tourNow) {
+      this.tour.start(this.settings.tourNow.kind);
+      this.tour.seek(this.settings.tourNow.t);
     }
     this.player.update(0);
     this.clock = new THREE.Timer();
@@ -279,7 +285,9 @@ export class App {
     this.weather.update(this.photo.active ? 0 : dt); // the sky holds still while you compose
     this.hud.handleKeys(this.input);
 
-    this.player.update(dt);
+    // On the tour it has the camera; otherwise you do.
+    if (this.tour.active) this.tour.update(this.photo.active ? 0 : dt);
+    else this.player.update(dt);
     this.camera.updateMatrixWorld();
     this.lighting.update(dt, this.camera);
     this.grass.update(dt, this.camera, s, this.renderer);

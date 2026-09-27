@@ -73,6 +73,8 @@ export class Settings {
     this.shot = q.has('shot'); // headless screenshot mode: no pointer-lock prompt, no audio
     // Start a fireworks show on load, optionally already `fwt` seconds in (for screenshots).
     this.fireworksNow = q.has('fireworks') ? parseFloat(q.get('fwt') || '0') : null;
+    // Start the tour on load (`tour=full` or `short`), optionally `tt` seconds in.
+    this.tourNow = ['full', 'short'].includes(q.get('tour')) ? { kind: q.get('tour'), t: parseFloat(q.get('tt') || '0') } : null;
     // Headless shots keep the look they were tuned with, whatever this browser saved.
     if (this.shot && !q.has('quality')) { this.preset = 'high'; Object.assign(this, PRESETS.high); }
     // ...and hold the hour and the sky still, unless asked otherwise.
@@ -94,9 +96,11 @@ export class Settings {
   save() {
     if (this.shot) return;
     try {
-      const out = Object.fromEntries(SAVED.map((k) => [k, this[k]]));
-      if (this.weather === 'custom') for (const k of SKY) out[k] = this[k];
-      if (this.timeSpeed === 0) out.time = this.time;
+      // (During the tour, what you had set before it rather than the tour's own weather and clock.)
+      const src = { ...this, ...(this.tourBackup || {}) };
+      const out = Object.fromEntries(SAVED.map((k) => [k, src[k]]));
+      if (src.weather === 'custom') for (const k of SKY) out[k] = this[k];
+      if (src.timeSpeed === 0) out.time = this.time;
       localStorage.setItem(STORE, JSON.stringify(out));
     } catch {}
   }
