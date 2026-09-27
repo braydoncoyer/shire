@@ -173,6 +173,42 @@ export class Ambience {
     o.stop(t + dur + 0.02);
   }
 
+  /**
+   * A firework: `launch` (a thump, sometimes a rising whistle) or `burst` (a boom, and crackle for
+   * crackle shells), heard from world position `p` after the time sound takes to get here.
+   */
+  firework(kind, p, type) {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    const cam = this.app.camera.position;
+    const dx = p[0] - cam.x, dy = p[1] - cam.y, dz = p[2] - cam.z, dist = Math.hypot(dx, dy, dz);
+    // Left or right of where you're looking.
+    const yaw = this.app.player.yaw, right = [Math.cos(yaw), -Math.sin(yaw)];
+    const pan = Math.max(-0.9, Math.min(0.9, ((dx * right[0] + dz * right[1]) / Math.max(dist, 1)) * 1.2));
+    const t = ctx.currentTime + dist / 343;
+    const near = Math.min(1, 45 / Math.max(dist, 1));
+    const dest = this.outdoor;
+    if (kind === 'launch') {
+      this._burst(t, { dest, type: 'lowpass', f: 260, dur: 0.18, gain: 0.35 * near, pan, brown: true });
+      if (Math.random() < 0.45) {
+        const g = new StereoPannerNode(ctx, { pan });
+        g.connect(dest);
+        this._note(t + 0.05, g, { f0: rand(700, 900), f1: rand(2200, 3000), dur: rand(1.2, 1.7), gain: 0.035 * near, type: 'sine' });
+      }
+      return;
+    }
+    // The boom: a low thud with a long rumble off the hills, and a sharper crack on top.
+    const big = type === 'willow' || type === 'palm' ? 1.2 : 1;
+    this._burst(t, { dest, type: 'lowpass', f: 140, dur: 1.6, gain: 0.9 * near * big, attack: 0.006, pan, brown: true });
+    this._burst(t, { dest, type: 'bandpass', f: 900, Q: 0.6, dur: 0.22, gain: 0.3 * near, pan });
+    this._burst(t + 0.35, { dest, type: 'lowpass', f: 90, dur: 2.2, gain: 0.25 * near * big, attack: 0.2, pan: -pan * 0.5, brown: true });
+    if (type === 'crackle' || type === 'willow') {
+      const n = type === 'crackle' ? 40 : 18, start = type === 'crackle' ? 1.1 : 0.4, span = type === 'crackle' ? 0.9 : 2.5;
+      for (let i = 0; i < n; i++)
+        this._burst(t + start + Math.random() * span, { dest, type: 'highpass', f: 2500, dur: 0.03, gain: rand(0.04, 0.12) * near * (type === 'willow' ? 0.4 : 1), pan: pan + rand(-0.2, 0.2) });
+    }
+  }
+
   /** A bird somewhere nearby sings one phrase. */
   _bird(t) {
     const ctx = this.ctx;

@@ -6,6 +6,7 @@ export const DEFAULTS = {
   time: 16.5, // hours, local solar time
   timeSpeed: 2.4, // in-game minutes per real second: 2.4 makes a day pass in 10 minutes
   weather: 'changing', // 'changing', a fixed kind of weather (sky/Weather.js), or 'custom'
+  fireworks: true, // Gandalf's fireworks over the lake every clear night at ten
   sunAzimuth: 0, // degrees added to the true solar azimuth
   clouds: 0.35,
   cloudDensity: 1,
@@ -39,7 +40,7 @@ export const QUALITY_KEYS = Object.keys(PRESETS.high);
 // Everything the settings panel sets is remembered between visits. The sky's own values are kept
 // only when it was set by hand, and the hour only when time stands still (otherwise each visit
 // starts on a fair afternoon).
-const SAVED = ['preset', ...QUALITY_KEYS, 'timeSpeed', 'weather', 'fov', 'sensitivity', 'invertY', 'showFps', 'volume', 'muted'];
+const SAVED = ['preset', ...QUALITY_KEYS, 'timeSpeed', 'weather', 'fireworks', 'fov', 'sensitivity', 'invertY', 'showFps', 'volume', 'muted'];
 const SKY = ['clouds', 'haze', 'windSpeed'];
 const STORE = 'shire.settings.v3';
 
@@ -70,6 +71,8 @@ export class Settings {
     this.cam = q.has('cam') ? q.get('cam').split(',').map(parseFloat) : null;
     this.fly = q.has('fly');
     this.shot = q.has('shot'); // headless screenshot mode: no pointer-lock prompt, no audio
+    // Start a fireworks show on load, optionally already `fwt` seconds in (for screenshots).
+    this.fireworksNow = q.has('fireworks') ? parseFloat(q.get('fwt') || '0') : null;
     // Headless shots keep the look they were tuned with, whatever this browser saved.
     if (this.shot && !q.has('quality')) { this.preset = 'high'; Object.assign(this, PRESETS.high); }
     // ...and hold the hour and the sky still, unless asked otherwise.

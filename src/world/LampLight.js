@@ -9,13 +9,14 @@
 // lanterns' height, so surfaces well above them (roofs) stay dark.
 
 import * as THREE from 'three/webgpu';
-import { texture, uniform, float, color, smoothstep, step, abs } from 'three/tsl';
+import { texture, uniform, float, color, smoothstep, step, abs, vec3 } from 'three/tsl';
 import { INNER_HALF } from './Layout.js';
 
 const RES = 0.5;
 const INTENSITY = 0.27; // candela-like, in the scene's light units
 const EMAX = 0.14; // irradiance stored at full scale
 const REACH = 8.5; // meters
+const FLASH = 150; // a firework burst's strength, same units
 const Y0 = -15, Y_RANGE = 60; // lantern heights encoded in the second channel
 
 export class LampLight {
@@ -29,6 +30,8 @@ export class LampLight {
     // Lit from dusk.
     this.on = smoothstep(0.05, 0.55, sky.u.night);
     this.time = 0;
+    // A firework's burst: a brief point of light high over the lake (color × strength; Fireworks.js).
+    this.flash = { pos: uniform(new THREE.Vector3(0, -1000, 0)), color: uniform(new THREE.Color(0, 0, 0)) };
   }
 
   /** Bake the lanterns (world positions) over the ground heights from the terrain's grid. */
@@ -74,7 +77,10 @@ export class LampLight {
     const lampY = t.g.mul(Y_RANGE).add(Y0);
     const below = float(1).sub(smoothstep(0.4, 1.6, p.y.sub(lampY)));
     const inside = step(abs(p.x), INNER_HALF - 1).mul(step(abs(p.z), INNER_HALF - 1));
-    return color(0xff8a3c).mul(v.mul(v).mul(EMAX)).mul(below).mul(inside).mul(this.on).mul(this.flicker);
+    const lamps = color(0xff8a3c).mul(v.mul(v).mul(EMAX)).mul(below).mul(inside).mul(this.on).mul(this.flicker);
+    // Inverse square from the burst, softened so nothing close by blows out.
+    const d = p.sub(this.flash.pos);
+    return lamps.add(vec3(this.flash.color).mul(FLASH).div(d.dot(d).add(400)));
   }
 
   /** Emission for a diffuse surface of `albedo` (Lambert: albedo × E / π). */

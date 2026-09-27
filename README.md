@@ -85,7 +85,8 @@ Outdoor sounds are muffled inside the inn.
 `?time=19.2&speed=8&weather=rain&clouds=0.5&cirrus=0.6&haze=0.4&rain=1&mist=0.8&ev=0.5&fov=70&quality=low&cam=x,y,z,yaw,pitch&fly`
 
 (`speed` is in-game minutes per real second; the default 2.4 is a 10-minute day. Headless shots (`?shot`) hold the time and the sky
-still unless you pass `speed` or `weather`.)
+still unless you pass `speed` or `weather`. `&fireworks` starts a fireworks show on load, and `&fwt=30` starts it
+30 seconds in.)
 
 ## Deploying
 

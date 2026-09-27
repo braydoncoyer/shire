@@ -22,6 +22,8 @@ import { PhotoMode } from './ui/PhotoMode.js';
 import { Ambience } from './audio/Ambience.js';
 import { Weather } from './sky/Weather.js';
 import { Rain } from './sky/Rain.js';
+import { Fireworks } from './sky/Fireworks.js';
+import { weatherU } from './sky/Weather.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
 import { Smoke } from './world/Smoke.js';
@@ -123,6 +125,9 @@ export class App {
     scene.add(this.wildlife.group);
     this.rain = new Rain(this.sky);
     scene.add(this.rain.mesh);
+    this.fireworks = new Fireworks(this.lampLight);
+    scene.add(this.fireworks.mesh);
+    this.fireworks.onEvent = (kind, p, type) => this.audio?.firework(kind, p, type);
     this.lampLight.bake([...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps, ...this.surroundings.lamps, ...this.party.lamps], this.terrain.heights);
     // Alpha-tested meshes (leaves, thatch fringe) draw after the opaque ones, which also lets the
     // GPU's hidden-surface removal cull more of what's behind them.
@@ -181,6 +186,7 @@ export class App {
     });
     const yaw = this.player.yaw;
     this.rain.mesh.visible = true; // it only shows in rain; build it now all the same
+    this.fireworks.mesh.visible = true; // likewise, only during a show
     const warm = async (k) => {
       this.player.yaw = yaw + (k * Math.PI) / 3;
       this.player.update(0);
@@ -204,6 +210,11 @@ export class App {
     progress('Lighting the lamps');
     for (let k = 0; k <= 6; k++) await warm(k);
     this.rain.mesh.visible = false;
+    this.fireworks.mesh.visible = false;
+    if (this.settings.fireworksNow !== null) {
+      this.fireworks.start();
+      for (let t = 0; t < this.settings.fireworksNow; t += 1 / 30) this.fireworks.update(1 / 30, { hour: this.settings.time, rain: 0, enabled: false });
+    }
     this.player.update(0);
     this.clock = new THREE.Timer();
     renderer.setAnimationLoop(() => this.frame());
@@ -262,6 +273,7 @@ export class App {
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const s = this.settings;
     // The day turns (not while the start screen waits for the first click).
+    const prevHour = s.time;
     if (this.hud.started || s.shot) s.time = (s.time + (s.timeSpeed * dt) / 60 + 24) % 24;
     this.weather.sunY = this.lighting.sun[1];
     this.weather.update(this.photo.active ? 0 : dt); // the sky holds still while you compose
@@ -277,6 +289,7 @@ export class App {
     this.smoke.update(dt, s);
     this.wildlife.update(dt);
     this.rain.update(dt, this.camera, s, this.lighting.indoor);
+    this.fireworks.update(this.photo.active ? 0 : dt, { hour: s.time, prevHour, rain: weatherU.rain.value, enabled: s.fireworks });
     this.greenDragon.interior.update(dt);
     // Eyes adjust indoors: inside the common room, exposure moves toward the room's own level.
     const inside = this.greenDragon.interior.inside(this.camera.position.x, this.camera.position.z) && this.camera.position.y < this.greenDragon.interior.y + 2.6;

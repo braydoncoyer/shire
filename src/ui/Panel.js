@@ -38,6 +38,8 @@ const SECTIONS = [
       { key: 'clouds', label: 'Cloud cover', kind: 'range', min: 0, max: 1, step: 0.01, fmt: pct, live: true, sky: true },
       { key: 'haze', label: 'Haze', kind: 'range', min: 0, max: 1, step: 0.01, fmt: pct, live: true, sky: true },
       { key: 'windSpeed', label: 'Wind', kind: 'range', min: 0, max: 12, step: 0.5, fmt: (v) => `${v.toFixed(1)} m/s`, live: true, sky: true },
+      { key: 'fireworks', label: 'Fireworks at ten each clear night', kind: 'check' },
+      { key: 'launchFireworks', label: 'Gandalf’s fireworks', kind: 'button', text: 'Launch now', action: (app) => app.fireworks.start() },
     ],
   },
   {
@@ -112,6 +114,13 @@ export class Panel {
         label.textContent = c.label;
         row.append(label);
         let input, out;
+        if (c.kind === 'button') {
+          const b = Object.assign(document.createElement('button'), { className: 'pill small', id, textContent: c.text });
+          b.addEventListener('click', () => { c.action(this.app); b.blur(); });
+          row.append(b);
+          this.body.append(row);
+          continue;
+        }
         if (c.kind === 'range') {
           out = document.createElement('output');
           out.htmlFor = id;
