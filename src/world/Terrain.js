@@ -8,6 +8,7 @@ import {
 } from 'three/tsl';
 import { heightAt, INNER_HALF, WORLD_HALF, WATER_Y } from './Layout.js';
 import { LAYERS } from '../core/Layers.js';
+import { paddockNode, furrowNode } from './Farmland.js';
 import { makeGroundNoiseTexture, makeLaneTexture, makeWaterTexture } from '../util/textures.js';
 
 const INNER_STEP = 1;
@@ -160,6 +161,18 @@ export function makeTerrainMaterial(groundNoise, laneTex, waterTex, lampLight) {
     const slope = float(1).sub(normalWorld.y);
     g.assign(mix(g, g.mul(0.72), smoothstep(0.35, 0.7, slope)));
 
+    // The farms: each paddock its own sward, some gone to hay, hedgerows along their edges (seen
+    // from afar; up close there are fences), and ploughed fields.
+    const pd = paddockNode(wp);
+    g.mulAssign(pd.w.mul(0.18).add(1));
+    g.assign(mix(g, color(0x9a9446), pd.y.mul(0.35)));
+    const hedge = float(1).sub(smoothstep(1.0, 2.2, pd.z.add(n3.r.sub(0.5).mul(1.6)))).mul(smoothstep(0.3, 0.45, n2.a)).mul(smoothstep(90, 220, dist));
+    g.assign(mix(g, color(0x34501c).mul(n3.g.mul(0.4).add(0.8)), hedge.mul(0.85)));
+    // Furrows fade out with distance before they'd shimmer.
+    const furrow = mix(float(0.5), smoothstep(0.15, 0.85, furrowNode(wp)), float(1).sub(smoothstep(40, 160, dist)));
+    const tilled = mix(color(0x5a4430), color(0x7c6246), furrow).mul(n3.b.mul(0.3).add(0.85)).mul(n1.b.mul(0.2).add(0.9));
+    g.assign(mix(g, tilled, pd.x));
+
     // Gravel lanes with frayed, grassy edges.
     const inInner = step(abs(wp.x), 279).mul(step(abs(wp.y), 279));
     const lt = texture(laneTex, wp.add(280).div(560));
@@ -212,15 +225,23 @@ export class Terrain {
       m.layers.set(LAYERS.TERRAIN);
       return m;
     });
-    // A 2 m proxy casts the terrain's shadows, sunk a little so it never shadows the real surface.
-    const H = this.heights, step = 2;
+    // A 2 m proxy casts the terrain's shadows. Each vertex takes the lowest ground within a cell of
+    // it (and sinks a little more), so the proxy never rises above the real surface, not even over
+    // paths cut into a slope or the edge of a leveled yard, where it would cast phantom shadows.
+    const H = this.heights, step = 2, win = Math.ceil(step / INNER_STEP);
     const pn = Math.floor((H.n - 1) / step) + 1;
     const pg = new THREE.PlaneGeometry(INNER_HALF * 2, INNER_HALF * 2, pn - 1, pn - 1);
     pg.rotateX(-Math.PI / 2);
     const pp = pg.attributes.position;
     for (let k = 0; k < pp.count; k++) {
       const i = Math.round((pp.getX(k) + INNER_HALF) / INNER_STEP), j = Math.round((pp.getZ(k) + INNER_HALF) / INNER_STEP);
-      pp.setY(k, H.H[(j + 1) * H.m + (i + 1)] - 0.35);
+      let lo = Infinity;
+      for (let dj = -win; dj <= win; dj++)
+        for (let di = -win; di <= win; di++) {
+          const ii = Math.min(H.m - 1, Math.max(0, i + 1 + di)), jj = Math.min(H.m - 1, Math.max(0, j + 1 + dj));
+          lo = Math.min(lo, H.H[jj * H.m + ii]);
+        }
+      pp.setY(k, lo - 0.15);
     }
     pg.computeBoundingSphere();
     this.shadowProxy = new THREE.Mesh(pg, new THREE.MeshBasicNodeMaterial());

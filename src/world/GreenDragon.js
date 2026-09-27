@@ -5,8 +5,8 @@
 // eaves sweep low. A gabled dormer with a round window sits over the main door, facing the bridge.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist, lantern, holedPanel, arcTimber } from './Kit.js';
-import { GREEN_DRAGON, GEO, BRIDGE } from './Layout.js';
+import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyDist, lantern, holedPanel, arcTimber, slab } from './Kit.js';
+import { GREEN_DRAGON, GEO, BRIDGE, heightAt } from './Layout.js';
 import { GreenDragonInterior, HALL, CEILING } from './Interior.js';
 import { LAYERS } from '../core/Layers.js';
 
@@ -35,7 +35,7 @@ export class GreenDragon {
     const G = GREEN_DRAGON;
     this.interior = new GreenDragonInterior(mats, env);
     this.interior.doorPoints = [];
-    this._building(B, G.poly, G.y, { wallH: 2.55, rise: 5.6, reach: 12, doors: true, ochre: true, dormer: true, chimneys: 4, hall: HALL.poly, forceChimney: this.interior.hearthXZ() });
+    this._building(B, G.poly, G.y, { wallH: 2.55, rise: 6.2, reach: 7.5, doors: true, ochre: true, dormer: true, chimneys: 5, hall: HALL.poly, forceChimney: this.interior.hearthXZ() });
     this._building(B, G.shed, G.shedY, { wallH: 2.3, rise: 3.2, reach: 4.5, doors: true, ochre: false, mixed: true, chimneys: 1 });
     this._forecourt(B);
     this.interior.build(B);
@@ -169,10 +169,10 @@ export class GreenDragon {
           roundWindowBars(B, at, c, cy, zc, r, D);
         } else if (q.round) {
           const r = w / 2;
-          B.add(glass, new THREE.CircleGeometry(r, 18), at(c, (q.y0 + q.y1) / 2, 0.02), 0xff0000);
+          B.add(glass, new THREE.CircleGeometry(r, 18), at(c, (q.y0 + q.y1) / 2, 0.115), 0xff0000);
           B.add('wood', new THREE.TorusGeometry(r, 0.07, 6, 18), at(c, (q.y0 + q.y1) / 2, T / 2 + 0.02), TIMBER);
-          B.add('wood', box(r * 2, 0.04, 0.05), at(c, (q.y0 + q.y1) / 2, 0.04), TIMBER);
-          B.add('wood', box(0.04, r * 2, 0.05), at(c, (q.y0 + q.y1) / 2, 0.04), TIMBER);
+          B.add('wood', box(r * 2, 0.04, 0.05), at(c, (q.y0 + q.y1) / 2, 0.14), TIMBER);
+          B.add('wood', box(0.04, r * 2, 0.05), at(c, (q.y0 + q.y1) / 2, 0.14), TIMBER);
           B.add(wallMat, box(w, q.y1 - q.y0, T - 0.1), at(c, (q.y0 + q.y1) / 2, -0.05), wallTint); // fill behind the circle
         } else {
           // Round-headed casement with leaded panes.
@@ -257,7 +257,14 @@ export class GreenDragon {
     }
 
     // Thatch over the whole footprint.
-    const roof = footprintRoof(poly, { eaveY: y + H - 0.2, overhang: 1.1, rise: o.rise, reach: o.reach, lip: 0.75 });
+    // Over the main door the thatch lifts in an eyebrow over a round window.
+    const eyebrows = [];
+    if (o.dormer && mainDoor) {
+      const { e, c } = mainDoor;
+      const tx = (e.b[0] - e.a[0]) / e.len, tz = (e.b[1] - e.a[1]) / e.len;
+      eyebrows.push({ x: e.a[0] + tx * c, z: e.a[1] + tz * c, tx, tz, w: 2.1, h: 1.45 });
+    }
+    const roof = footprintRoof(poly, { eaveY: y + H - 0.2, overhang: 1.1, rise: o.rise, reach: o.reach, lip: 0.75, eyebrows });
     B.add('thatch', roof, new THREE.Matrix4(), 0xffffff);
     // Ragged straw ends hanging from the eaves.
     let seed = Math.floor(y * 1000) + poly.length;
@@ -274,16 +281,21 @@ export class GreenDragon {
       }
     }
 
-    // Dormer over the main door: a little gable with a round window, its own thatch hood.
-    if (o.dormer && mainDoor) {
+    // The eyebrow's window: a plastered tympanum under the lifted thatch, the round window in it.
+    if (eyebrows.length) {
       const { e, c } = mainDoor;
-      const at = (xx, yy, z, rx, ry, rz) => e.m.clone().multiply(mtx(xx, yy, z, rx, ry, rz));
-      const tri = new THREE.Shape([new THREE.Vector2(-1.7, 0), new THREE.Vector2(1.7, 0), new THREE.Vector2(0, 2.3)]);
-      B.add('plaster', new THREE.ExtrudeGeometry(tri, { depth: 3.2, bevelEnabled: false }), at(c, H - 0.1, -3.0), OCHRE);
-      B.add('glass', new THREE.CircleGeometry(0.48, 20), at(c, H + 0.75, 0.22), 0xff0000);
-      B.add('wood', new THREE.TorusGeometry(0.52, 0.08, 6, 20), at(c, H + 0.75, 0.23), TIMBER);
-      for (const s of [-1, 1]) B.add('wood', box(2.5, 0.16, 0.1), at(c + s * 0.8, H + 0.85, 0.15, 0, 0, s * -0.87), TIMBER);
-      for (const s of [-1, 1]) B.add('thatch', box(3.0, 0.55, 3.8), at(c + s * 1.0, H + 1.15, -1.2, 0, 0, s * -0.9), 0xffffff);
+      const at = (xx, yy, z, rx, ry, rz) => e.m.clone().multiply(mtx(xx, yy, z - T / 2, rx, ry, rz));
+      const { w, h } = eyebrows[0];
+      const base = roof.userData.heightAt(e.a[0] + ((e.b[0] - e.a[0]) / e.len) * c - e.n[0] * 0.3, e.a[1] + ((e.b[1] - e.a[1]) / e.len) * c - e.n[1] * 0.3) - y;
+      const pts = [];
+      for (let a = -2.2 * w; a <= 2.2 * w + 1e-6; a += w / 8) pts.push(new THREE.Vector2(a, base + h * Math.exp(-2 * (a / w) ** 2) - H - 0.3));
+      const shape = new THREE.Shape([new THREE.Vector2(2.2 * w, 0), new THREE.Vector2(-2.2 * w, 0), ...pts]);
+      B.add('plaster', slab(shape, T, 1), at(c, H - 0.05, 0), OCHRE);
+      const wy = H + 0.42;
+      B.add('glass', new THREE.CircleGeometry(0.46, 24), at(c, wy, T / 2 + 0.02), 0xff0000);
+      B.add('wood', arcTimber(0.54, 0.1, 0.12, 0, Math.PI * 2, 24), at(c, wy, T / 2 + 0.03), TIMBER);
+      B.add('wood', box(0.92, 0.04, 0.05), at(c, wy, T / 2 + 0.04), TIMBER);
+      B.add('wood', box(0.04, 0.92, 0.05), at(c, wy, T / 2 + 0.04), TIMBER);
     }
 
     // Chimneys where the roof is high (along the ridges).
@@ -304,14 +316,23 @@ export class GreenDragon {
         picked.push(c);
       }
       for (const [x, z, h] of picked) {
-        const top = h + 1.2;
         const brick = o.ochre;
         // Over the common room a stack starts at the ceiling (the hearth's is inside its breast).
         const foot = o.hall && polyDist(o.hall, x, z) < 0.6 ? y + CEILING : y + 1;
-        B.add(brick ? 'brick' : 'stone', box(0.8, top - foot, 0.8), mtx(x, (top + foot) / 2, z), brick ? 0x9a5236 : STONE);
-        B.add('stone', box(1.0, 0.18, 1.0), mtx(x, top, z), STONE_DARK);
-        if (brick) B.add('brick', cylinder(0.13, 0.15, 0.4, 10), mtx(x - 0.15, top + 0.25, z), 0xa8603e);
-        this.chimneys.push(new THREE.Vector3(x, top + 0.45, z));
+        if (brick) {
+          // Tall rendered-stone stacks with a drip course, a cap and a pair of clay pots.
+          const top = h + 1.9;
+          B.add('stone', box(0.85, top - foot, 0.75), mtx(x, (top + foot) / 2, z), 0x9c907c);
+          B.add('stone', box(0.97, 0.12, 0.87), mtx(x, top - 0.45, z), 0x6e665a);
+          B.add('stone', box(1.02, 0.16, 0.92), mtx(x, top + 0.08, z), 0x6e665a);
+          for (const s of [-1, 1]) B.add('brick', cylinder(0.11, 0.14, 0.42, 10), mtx(x + s * 0.2, top + 0.37, z), 0xa8603e);
+          this.chimneys.push(new THREE.Vector3(x, top + 0.6, z));
+        } else {
+          const top = h + 1.2;
+          B.add('stone', box(0.8, top - foot, 0.8), mtx(x, (top + foot) / 2, z), STONE);
+          B.add('stone', box(1.0, 0.18, 1.0), mtx(x, top, z), STONE_DARK);
+          this.chimneys.push(new THREE.Vector3(x, top + 0.45, z));
+        }
       }
     }
   }
@@ -327,22 +348,29 @@ export class GreenDragon {
     const ux = bx - dx, uz = bz - dz, l = Math.hypot(ux, uz), fx = ux / l, fz = uz / l;
     const yaw = Math.atan2(fx, fz);
     const base = new THREE.Matrix4().makeRotationY(yaw).setPosition(dx, G.y, dz);
-    const at = (x, y, z, rx, ry, rz) => base.clone().multiply(mtx(x, y, z, rx, ry, rz));
+    // Everything out here stands on the ground where it is (the lawn falls away toward the bridge).
+    const flat = new THREE.Matrix4().makeRotationY(yaw).setPosition(dx, 0, dz);
+    const ground = (x, z) => {
+      const p = new THREE.Vector3(x, 0, z).applyMatrix4(flat);
+      return new THREE.Vector3(p.x, heightAt(p.x, p.z), p.z);
+    };
+    const at = (x, y, z, rx, ry, rz) => new THREE.Matrix4().makeTranslation(0, ground(x, z).y, 0).multiply(flat).multiply(mtx(x, y, z, rx, ry, rz));
+    const onGround = (x, y, z) => ground(x, z).add(new THREE.Vector3(0, y, 0));
     const cob = [0x8f897d, 0xa29b8c, 0x7f7a70, 0x968f80];
     let s = 1;
     const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
     for (let z = 0.6; z < 7.5; z += 0.42)
       for (let x = -2.6 + (z > 4 ? 0.8 : 0); x <= 2.6 - (z > 4 ? 0.8 : 0); x += 0.42)
-        B.add('stone', box(0.38, 0.08, 0.38), at(x + (Math.round(z / 0.42) % 2) * 0.21, 0.02, z, 0, rnd() * 0.3), cob[Math.floor(rnd() * cob.length)]);
+        B.add('stone', box(0.38, 0.08, 0.38), at(x + (Math.round(z / 0.42) % 2) * 0.21, 0.01, z, 0, rnd() * 0.3), cob[Math.floor(rnd() * cob.length)]);
     for (const [x, z, r] of [[-5, 5.5, 0.1], [5.5, 6.5, -0.2], [-6.5, 9.5, 0.3]]) {
       B.add('wood', box(1.8, 0.07, 0.4), at(x, 0.45, z, 0, r), 0x6e5238);
-      for (const k of [-1, 1]) B.add('wood', box(0.08, 0.45, 0.35), at(x + k * 0.75 * Math.cos(r), 0.22, z - k * 0.75 * Math.sin(r), 0, r), 0x4a3526);
+      for (const k of [-1, 1]) B.add('wood', box(0.08, 0.7, 0.35), at(x, 0.1, z, 0, r).multiply(mtx(k * 0.75, 0, 0)), 0x4a3526);
       const p = new THREE.Vector3(x, 0, z).applyMatrix4(base);
       this.colliders.push({ x: p.x, z: p.z, hx: 0.95, hz: 0.3, rot: yaw + r });
     }
     B.add('metal', box(0.09, 2.7, 0.09), at(2.4, 1.35, 7.8), 0x2a2622);
     lantern(B, at(2.4, 2.9, 7.8), 0.26);
-    this.lamps.push(new THREE.Vector3(2.4, 2.85, 7.8).applyMatrix4(base));
+    this.lamps.push(onGround(2.4, 2.85, 7.8));
 
     // Lanterns on posts along the path from the bridge, alternating sides.
     const L = Math.hypot(bx - dx, bz - dz);
@@ -351,7 +379,7 @@ export class GreenDragon {
       const m = at(side * 1.9, 0, d);
       B.add('wood', box(0.12, 1.52, 0.12), m.clone().multiply(mtx(0, 0.76, 0)), TIMBER);
       lantern(B, m.clone().multiply(mtx(0, 1.68, 0)), 0.19);
-      this.lamps.push(new THREE.Vector3(side * 1.9, 1.62, d).applyMatrix4(base));
+      this.lamps.push(onGround(side * 1.9, 1.62, d));
     }
 
     // Flower beds and shrubs along the inn's walls, and clumps by the forecourt.
@@ -368,8 +396,8 @@ export class GreenDragon {
         }
       }
       for (const [x, z] of [[-4.2, 3.2], [4.2, 3.4], [-3.6, 8.5], [5.2, 9.5]]) {
-        const p = new THREE.Vector3(x, 0, z).applyMatrix4(base);
-        shrubs.add(kinds[Math.floor(rnd() * 4)], p.x, p.z, 0.8, rnd() * 6.28, G.y);
+        const p = ground(x, z);
+        shrubs.add(kinds[Math.floor(rnd() * 4)], p.x, p.z, 0.8, rnd() * 6.28, p.y);
       }
     }
     // The hanging sign on a post by the door.
