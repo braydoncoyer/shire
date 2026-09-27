@@ -1,0 +1,10 @@
+# Upload only what the build needs (the CLI doesn't read .gitignore): no reference stills,
+# screenshots, raw geodata, dev scripts or node_modules.
+/*
+!/src
+!/public
+!/index.html
+!/package.json
+!/package-lock.json
+!/vite.config.js
+!/vercel.json
