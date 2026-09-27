@@ -42,7 +42,7 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 
 ## Day and weather
 
-- **The day:** a full day passes in 3 minutes by default: sunset, a starlit night with fireflies,
+- **The day:** a full day passes in 10 minutes by default: sunset, a starlit night with fireflies,
   dawn, then day again. The clock waits on the start screen until you first click in. Settings →
   *Length of a day* can stop time or set 1, 3, 10 or 30 minutes, or real time.
 - **The weather:** it drifts between clear, fair, cloudy, overcast and rain. Each lasts a minute or
@@ -84,7 +84,7 @@ Outdoor sounds are muffled inside the inn.
 
 `?time=19.2&speed=8&weather=rain&clouds=0.5&cirrus=0.6&haze=0.4&rain=1&mist=0.8&ev=0.5&fov=70&quality=low&cam=x,y,z,yaw,pitch&fly`
 
-(`speed` is in-game minutes per real second. Headless shots (`?shot`) hold the time and the sky
+(`speed` is in-game minutes per real second; the default 2.4 is a 10-minute day. Headless shots (`?shot`) hold the time and the sky
 still unless you pass `speed` or `weather`.)
 
 ## Deploying

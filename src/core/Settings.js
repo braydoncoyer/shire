@@ -4,7 +4,7 @@
 
 export const DEFAULTS = {
   time: 16.5, // hours, local solar time
-  timeSpeed: 8, // in-game minutes per real second: 8 makes a day pass in 3 minutes
+  timeSpeed: 2.4, // in-game minutes per real second: 2.4 makes a day pass in 10 minutes
   weather: 'changing', // 'changing', a fixed kind of weather (sky/Weather.js), or 'custom'
   sunAzimuth: 0, // degrees added to the true solar azimuth
   clouds: 0.35,
@@ -39,7 +39,7 @@ export const QUALITY_KEYS = Object.keys(PRESETS.high);
 // What the panel remembers between visits (not the camera, the hour or the sky, which start each
 // visit on a fair afternoon).
 const SAVED = ['preset', ...QUALITY_KEYS, 'timeSpeed', 'weather', 'fov', 'sensitivity', 'invertY', 'showFps', 'volume', 'muted'];
-const STORE = 'shire.settings.v2';
+const STORE = 'shire.settings.v3';
 
 export class Settings {
   constructor() {
@@ -47,7 +47,12 @@ export class Settings {
     this.preset = 'high';
     Object.assign(this, PRESETS.high);
     try {
-      const saved = JSON.parse(localStorage.getItem(STORE) || '{}');
+      let saved = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (!saved) {
+        // Carried over from before the day slowed down, minus the old day length.
+        saved = JSON.parse(localStorage.getItem('shire.settings.v2') || '{}');
+        delete saved.timeSpeed;
+      }
       for (const k of SAVED) if (k in saved) this[k] = saved[k];
     } catch {}
 

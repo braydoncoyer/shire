@@ -184,7 +184,7 @@ export class Panel {
   reset() {
     const s = this.app.settings;
     s.setPreset('high');
-    Object.assign(s, { fov: 62, sensitivity: 1, invertY: false, showFps: false, volume: 0.7, muted: false, timeSpeed: 8, weather: 'changing' });
+    Object.assign(s, { fov: 62, sensitivity: 1, invertY: false, showFps: false, volume: 0.7, muted: false, timeSpeed: 2.4, weather: 'changing' });
     this._changed(true);
   }
 
