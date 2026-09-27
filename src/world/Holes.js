@@ -312,10 +312,11 @@ export class HobbitHoles {
     // Lavender along the terrace in front of the study; herbs and cottage flowers by the door.
     for (let v = -14.5; v < -2.5; v += 0.8)
       for (const u of [2.0, 3.0]) {
+        if (v > -5.2 && v < -2.2) continue; // Bilbo's bench
         const p = arcW(v + (rand() - 0.5) * 0.3, u + (rand() - 0.5) * 0.3);
         shrubs.add('lavender', p.x, p.z, 0.75 + rand() * 0.25, rand() * 6.28, hole.y);
       }
-    for (const [v, u, k] of [[-1.8, 0.8, 'roses'], [1.9, 0.8, 'hydrangea'], [2.6, 1.6, 'yellow'], [-2.4, 1.4, 'marigold'], [5.5, 1.2, 'yellow'], [6.5, 2.2, 'roses'], [3.8, 3.4, 'hydrangea']]) {
+    for (const [v, u, k] of [[-1.8, 0.8, 'roses'], [1.9, 0.8, 'hydrangea'], [2.6, 1.6, 'yellow'], [-2.4, 1.0, 'marigold'], [5.5, 1.2, 'yellow'], [6.5, 2.2, 'roses'], [4.4, 3.4, 'hydrangea']]) {
       const p = arcW(v, u);
       shrubs.add(k, p.x, p.z, 0.8 + rand() * 0.3, rand() * 6.28, hole.y);
     }
@@ -334,11 +335,11 @@ export class HobbitHoles {
     }
 
     // Bilbo's bench on the terrace, and the giant pumpkin in its wheelbarrow by the steps.
-    const bx = 3.4, bz = 2.2;
+    const bx = -3.6, bz = 2.3;
     B.add('wood', box(1.5, 0.07, 0.42), at(bx, 0.46, bz, 0, 0.25), 0x8a7152);
     B.add('wood', box(1.5, 0.32, 0.05), at(bx, 0.72, bz - 0.2, -0.15, 0.25), 0x8a7152);
     for (const s of [-1, 1]) B.add('wood', box(0.08, 0.46, 0.38), at(bx + s * 0.62 * Math.cos(0.25), 0.23, bz - s * 0.62 * Math.sin(0.25), 0, 0.25), 0x5c4330);
-    const wx = -2.4, wz = T - 0.8, wr = 0.5;
+    const wx = 2.8, wz = T - 0.9, wr = 2.6;
     B.add('wood', box(1.1, 0.08, 0.7), at(wx, 0.42, wz, 0, wr, -0.12), 0x6e5238);
     for (const s of [-1, 1]) B.add('wood', box(1.1, 0.25, 0.05), at(wx, 0.52, wz + s * 0.35, 0, wr, -0.12), 0x6e5238);
     for (const s of [-1, 1]) B.add('wood', box(1.0, 0.05, 0.05), at(wx - 0.9 * Math.cos(wr), 0.45, wz + 0.9 * Math.sin(wr) + s * 0.28, 0, wr, 0.25), 0x5c4330);

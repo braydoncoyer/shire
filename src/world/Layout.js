@@ -38,7 +38,7 @@ const [ptX, ptZ] = tree('The Party Tree');
 // Bag End looks out toward the Party Tree. On film its oak stands on the knoll behind the door and
 // to the right (the survey marks it to the left), and a rounded hill rises beyond, off to the left.
 const BE_F = (() => { const x = ptX - beX, z = ptZ - beZ, n = Math.hypot(x, z); return [x / n, z / n]; })();
-const [oakX, oakZ] = [beX - BE_F[0] * 13.5 + BE_F[1] * 4.5, beZ - BE_F[1] * 13.5 - BE_F[0] * 4.5];
+const [oakX, oakZ] = [beX - BE_F[0] * 19 + BE_F[1] * 4.5, beZ - BE_F[1] * 19 - BE_F[0] * 4.5];
 // The view up the village from the lake path, as on film: an open slope from the lane up to Bag End
 // with holes either side of it, and the lane passing between two grassy banks in the foreground.
 const VISTA = { ax: 59, az: -50, bx: beX, bz: beZ };

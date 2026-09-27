@@ -22,9 +22,9 @@ export const SPECIES = {
   // The oak over Bag End: a short, massive trunk and long heavy limbs reaching out almost level,
   // so the crown spreads far wider than it is tall, right across the top of the knoll.
   bagEndOak: {
-    trunk: { length: 3.4, radius: 0.85, wobble: 0.1 },
+    trunk: { length: 5.2, radius: 0.85, wobble: 0.1 },
     levels: [
-      { children: 9, start: 0.45, angle: 76, lenFactor: 1, radFactor: 0.5, wobble: 0.16, up: 0.035, droop: 0.03, segLen: 1.3, spread: 1 },
+      { children: 9, start: 0.55, angle: 70, lenFactor: 1, radFactor: 0.5, wobble: 0.16, up: 0.035, droop: 0.03, segLen: 1.3, spread: 1 },
       { children: 6, start: 0.2, angle: 50, lenFactor: 0.5, radFactor: 0.55, wobble: 0.26, up: 0.08, droop: 0.05, segLen: 0.9, spread: 1 },
       { children: 4, start: 0.3, angle: 42, lenFactor: 0.55, radFactor: 0.6, wobble: 0.3, up: 0.1, droop: 0.04, segLen: 0.7, spread: 1 },
     ],
