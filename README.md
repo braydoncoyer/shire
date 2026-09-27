@@ -89,9 +89,10 @@ still unless you pass `speed` or `weather`.)
 
 ## Deploying
 
-`npm run build` writes a static site to `dist/`. It uses relative paths, so it works from any
-subfolder. `.github/workflows/deploy.yml` builds it and publishes to GitHub Pages on every push to
-`main`. To use it, set the repository's **Settings → Pages → Source** to *GitHub Actions*.
+The site is static: `npm run build` writes it to `dist/` with relative paths, so it can be served
+from any host or subfolder. It's hosted on Vercel, connected to the GitHub repository: every push to
+`main` deploys to production, and every other branch gets its own preview URL. `vercel.json` sets the
+build and lets browsers cache the hashed files in `assets/` for good.
 
 ## Accuracy and data
 
