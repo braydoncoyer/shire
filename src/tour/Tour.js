@@ -8,7 +8,7 @@
 // walks. Pressing a key, clicking, or leaving the window pauses it; from the pause you can carry
 // on, start again, or walk on by yourself from wherever you are.
 
-import { route, along } from './Route.js';
+import { route, along, join } from './Route.js';
 import { heightAt, surfaceAt, WATER_Y } from '../world/Layout.js';
 import { EYE } from '../player/Player.js';
 
@@ -18,50 +18,49 @@ const smooth = (x) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
-// The stops. `at` is where you stand, `look` what you look at ([x, z] and a height above the
-// ground there, or [x, y, z] absolute), `hold` seconds [full, short], `hour` the time of day on
-// arrival. `pan` sweeps the view (radians) while you stand there; `fov` pushes in.
+// The stops, each ending on a composed frame (checked in renders, with the caption in the bottom
+// left in mind). `at` is where you stand; the view ends facing `face` ([x, z]) at `pitch`, having
+// turned `pan` radians onto it while you stand there; `fov` pushes in. `hold` is seconds [full,
+// short], and `hour` the time of day on arrival: the light is chosen per stop, and the tour spends
+// a long while in the sunset and dusk.
 const STOPS = [
   {
-    at: [116, -87], look: [30, -75, 2], hold: [5, 3.5], hour: 16.7, pan: 0.3,
-    title: 'Hobbiton', line: 'Out of the cutting, the village opens up across the hillside.',
+    at: [108, -83], face: [40, -95], pitch: 0.06, hold: [5, 3.5], hour: 17.0, pan: 0.25,
+    title: 'Hobbiton', line: 'Out of the cutting, the lane curves in among the first round doors.',
   },
   {
-    at: [59, -50], look: [-60, -100, 3], hold: [6, 4], hour: 16.9, pan: 0.15,
-    title: 'The lane up to Bag End', line: 'Between two grassy banks, up the Hill to the oak — the view from the films.',
-  },
-  {
-    at: [12, -66], look: [-2, -75, 2], hold: [7, 0], hour: 17.1, pan: 0.5, only: 'full',
+    at: [16, -57], face: [-3, -79], pitch: 0.14, hold: [7, 4.5], hour: 17.3, pan: -0.3,
     title: 'The Party Field', line: 'Laid out for Bilbo’s eleventy-first birthday: the pavilion, the dance ring and the bandstand.',
   },
   {
-    at: [-11.4, -54.5], look: [-10.54, -60.47, 1.0], hold: [6, 4], hour: 17.3, pan: 0.5,
-    title: 'Bagshot Row', line: 'Sam Gamgee’s yellow door, below the Hill.',
+    at: [-4, -47], face: [-18, -61], pitch: 0.05, hold: [6, 4], hour: 17.5, pan: 0.3,
+    title: 'Bagshot Row', line: 'Stone steps climb past the round doors and gardens below the Hill.',
   },
   {
-    at: [-54.5, -96.5], look: [-65.86, -103.82, 1.0], hold: [7, 5], hour: 17.55, pan: 0.1, fov: 52,
+    at: [-54.5, -96.5], face: [-65, -103.3], pitch: 0.12, hold: [7, 5], hour: 17.7, pan: 0.12, fov: 56,
     title: 'Bag End', line: 'Bilbo’s hole under the Hill. No admittance except on party business.',
   },
   {
-    at: [-57, -97], look: [27, -44, 4], hold: [7, 5], hour: 17.75, pan: 0.35,
+    at: [-57, -97], face: [27, -44], pitch: -0.13, hold: [7, 5], hour: 18.35, pan: -0.3,
     title: 'The view from Bag End', line: 'Over the Party Field and the Party Tree to the Bywater and the Green Dragon.',
     next: { cut: 'short' },
   },
   {
-    at: [21, -30.5], look: [67, 138, 6], hold: [6, 4], hour: 18.85, pan: 0.3,
-    title: 'The Party Tree', line: 'The great pine above the water, hung with lanterns for the party.',
+    at: [52, -40], face: [-40, 5], pitch: 0.06, hold: [7, 5], hour: 19.2, pan: 0.3,
+    title: 'The Party Tree', line: 'The great pine above the water, hung with lanterns, as the sun goes down.',
     // The walk on from here is the long way round the lake.
-    next: { title: 'The Merry Meander', line: 'Round the Bywater by the lakeside path, to the Mill.', cut: 'short' },
+    next: { title: 'The Merry Meander', line: 'Round the Bywater by the lakeside path, to the Mill.', cut: 'short', via: [-20, -25] },
   },
   {
-    at: [4, 119], look: [60, 128, 3], hold: [6, 4], hour: 19.4, pan: 0.35,
+    at: [4, 119], face: [60, 125], pitch: 0.06, hold: [7, 5], hour: 19.55, pan: 0.3,
     title: 'The Mill and the bridge', line: 'Sandyman’s Mill turns on the Mill Run, and the double-arched bridge leads to the inn.',
   },
   {
-    at: [48, 122], look: [24, 40, 22], hold: [46, 32], hour: 20.3, pan: 0.2, finale: true,
-    title: 'The Green Dragon', line: 'Night falls, and Gandalf’s fireworks go up over the water.',
+    at: [48, 122], face: [24, 40], pitch: 0.2, hold: [60, 42], hour: 19.7, hourEnd: 20.6, pan: 0.2, finale: true,
+    title: 'The Green Dragon', line: 'Dusk turns to night, and Gandalf’s fireworks go up over the water.',
   },
 ];
+const FIREWORKS_AT = 20.0; // the finale's show starts once it's dark enough
 // Inside to the fire: through the open door off the lane, to stand before the hearth.
 const INN = { door: [75.1, 128.2], inside: [73.5, 132.8], hearth: [74.8, 136.1] };
 
@@ -126,7 +125,7 @@ export class Tour {
     let t = 0;
     const push = (s) => { s.t0 = t; t += s.dur; segs.push(s); return s; };
 
-    const stops = STOPS.filter((s) => full || s.only !== 'full');
+    const stops = STOPS;
     // The glide in.
     const landing = route(LAND, stops[0].at);
     const ahead = along(landing, 8);
@@ -136,15 +135,16 @@ export class Tour {
 
     let from = LAND, hour = 16.6, prevStop = null;
     stops.forEach((s, i) => {
+      const via = prevStop?.next?.via;
       const cut = prevStop?.next?.cut === kind || prevStop?.next?.cut === true;
       if (cut) {
         push({ type: 'cut', dur: 1.8, hour0: hour, hour1: s.hour, to: s });
       } else {
-        const r = i === 0 ? landing : route(from, s.at);
+        const r = i === 0 ? landing : via ? join(route(from, via), route(via, s.at)) : route(from, s.at);
         push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, from: prevStop, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
       }
-      push({ type: 'hold', dur: s.hold[full ? 0 : 1], stop: s, index: i, count: stops.length, hour0: s.hour, hour1: s.finale ? s.hour + 0.45 : s.hour + 0.02 });
-      hour = s.finale ? s.hour + 0.45 : s.hour + 0.02;
+      push({ type: 'hold', dur: s.hold[full ? 0 : 1], stop: s, index: i, count: stops.length, hour0: s.hour, hour1: s.hourEnd ?? s.hour + 0.02 });
+      hour = s.hourEnd ?? s.hour + 0.02;
       from = s.at;
       prevStop = s;
     });
@@ -310,7 +310,7 @@ export class Tour {
       const ahead = [0, 0, 0];
       for (const a of [5, 9, 13]) {
         const [ax, az] = along(r, Math.min(r.length, d + a));
-        ahead[0] += ax / 3; ahead[1] += (groundAt(ax, az) + EYE * 0.85) / 3; ahead[2] += az / 3;
+        ahead[0] += ax / 3; ahead[1] += (groundAt(ax, az) + EYE) / 3; ahead[2] += az / 3;
       }
       // ...easing away from the last stop's view as you set off, and toward the next one's as you
       // come up to it.
@@ -333,7 +333,7 @@ export class Tour {
       // A slow sweep across the view, and a gentle push in where there's something to look closer at.
       look = this._stopLook(st, u);
       if (st.fov) fov = lerp(s.fov, st.fov, smooth(u * 1.4));
-      if (st.finale && !this.fireworksFired && t - seg.t0 > 1.5) {
+      if (st.finale && !this.fireworksFired && s.time >= FIREWORKS_AT) {
         this.fireworksFired = true;
         app.fireworks.start();
       }
@@ -360,7 +360,10 @@ export class Tour {
 
     // Where it looks, turning smoothly.
     const dx = look[0] - x, dy = look[1] - camY, dz = look[2] - z;
-    const yaw = Math.atan2(-dx, -dz), pitch = Math.atan2(dy, Math.hypot(dx, dz));
+    const yaw = Math.atan2(-dx, -dz);
+    // On the move, keep the eyes up: never looking down at your feet or up at the sky.
+    let pitch = Math.atan2(dy, Math.hypot(dx, dz));
+    if (walking) pitch = clamp(pitch, -0.08, 0.12);
     if (this.yaw === null) {
       this.yaw = yaw; this.pitch = pitch; this.yawV = 0; this.pitchV = 0;
     } else if (this.state === 'playing') {
@@ -388,10 +391,15 @@ export class Tour {
     return this._current;
   }
 
-  /** Where a stop's view points `u` (0..1) of the way through its pan. */
+  /** Where a stop's view points `u` (0..1) of the way through its pan: onto its composed frame. */
   _stopLook(st, u) {
-    const look = this._target(st);
-    return st.pan ? panLook(st.at, look, st.pan * (smooth(u) - 0.5)) : look;
+    const [x, z] = st.at, y = groundAt(x, z) + EYE, D = 60;
+    if (!st.face) {
+      const look = this._target(st);
+      return st.pan ? panLook(st.at, look, st.pan * (smooth(u) - 1)) : look;
+    }
+    const yaw = Math.atan2(x - st.face[0], z - st.face[1]) + (st.pan || 0) * (1 - smooth(u));
+    return [x - Math.sin(yaw) * D, y + Math.tan(st.pitch) * D, z - Math.cos(yaw) * D];
   }
 
   /** What a stop looks at: a point `up` m above the ground (or the water) at [x, z]. */

@@ -171,3 +171,8 @@ export function along(r, d) {
   const [ax, az] = r.pts[i], [bx, bz] = r.pts[i + 1];
   return [ax + (bx - ax) * t, az + (bz - az) * t];
 }
+
+/** Two routes end to end (the second starting where the first ends). */
+export function join(a, b) {
+  return { pts: [...a.pts, ...b.pts.slice(1)], length: a.length + b.length };
+}
