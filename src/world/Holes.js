@@ -121,7 +121,7 @@ export class HobbitHoles {
     if (hole.bagEnd) for (let k = 0; k < 6; k++) B.add('wood', box(0.05, 0.8, 0.04), atG(gx - gate, 0.5, fz, 0, swing).multiply(mtx(0.12 + k * 0.24, 0, 0)), WEATHERED);
 
     // Letterbox: a hollowed log on a post, or a painted box.
-    const lbx = gx + gate + 0.45;
+    const lbx = hole.bagEnd ? gx - gate - 0.4 : gx + gate + 0.45; // Bag End's: just left of the gate
     B.add('wood', box(0.12, 1.0, 0.12), atG(lbx, 0.5, fz + 0.3), TIMBER);
     if (hole.bagEnd || rand() < 0.5) B.add('wood', cylinder(0.14, 0.14, 0.62, 10), atG(lbx, 1.1, fz + 0.3, 0, 0, Math.PI / 2), 0x7a5a3c);
     else B.add('paint', box(0.3, 0.24, 0.4), atG(lbx, 1.1, fz + 0.3), hole.doorColor);

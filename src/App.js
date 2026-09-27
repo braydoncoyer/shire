@@ -98,11 +98,12 @@ export class App {
     scene.add(this.buildings.group);
     this.surroundings = new Surroundings(this.mats);
     scene.add(this.surroundings.group);
-    // Smoke from about half the chimneys, always the inn's hearth and Bag End.
-    const chimneys = [this.greenDragon.chimneys[0], this.holes.chimneys[0]];
+    // Every chimney can smoke; each gets a rank and Smoke lights the lowest ranked (the inn's hearth
+    // and Bag End always).
+    const chimneys = [this.greenDragon.chimneys[0], this.holes.chimneys[0]].map((c) => Object.assign(c.clone(), { rank: 0 }));
     [...this.greenDragon.chimneys.slice(1), ...this.holes.chimneys.slice(3), ...this.buildings.chimneys].forEach((c, i) => {
       const h = Math.sin(i * 12.9898 + 4.1) * 43758.5453;
-      if (h - Math.floor(h) < 0.5) chimneys.push(c);
+      chimneys.push(Object.assign(c.clone(), { rank: h - Math.floor(h) }));
     });
     this.smoke = new Smoke(chimneys, this.sky, this.terrain.groundNoise);
     scene.add(this.smoke.mesh);

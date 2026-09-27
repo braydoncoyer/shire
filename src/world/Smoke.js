@@ -19,7 +19,7 @@ export class Smoke {
     this.u = { time: uniform(0), wind: uniform(new THREE.Vector2(1, 0)) };
     const n = chimneys.length * PUFFS;
     const pos = new Float32Array(n * 4 * 3), uvs = new Float32Array(n * 4 * 2);
-    const origin = new Float32Array(n * 4 * 3), seed = new Float32Array(n * 4);
+    const origin = new Float32Array(n * 4 * 3), seed = new Float32Array(n * 4), rank = new Float32Array(n * 4);
     const idx = [];
     let v = 0;
     chimneys.forEach((c, ci) => {
@@ -31,6 +31,7 @@ export class Smoke {
           uvs.set([x + 0.5, y + 0.5], v * 2);
           origin.set([c.x, c.y, c.z], v * 3);
           seed[v] = s + ci * 7.13;
+          rank[v] = c.rank ?? 0;
           v++;
         }
         const b = v - 4;
@@ -42,15 +43,21 @@ export class Smoke {
     g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     g.setAttribute('origin', new THREE.BufferAttribute(origin, 3));
     g.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
+    g.setAttribute('rank', new THREE.BufferAttribute(rank, 1));
     g.setIndex(idx);
 
     const u = this.u, su = sky.u;
     const age = varying(float(0), 'smokeAge');
+    const lit = varying(float(0), 'smokeLit');
     const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
     m.positionNode = Fn(() => {
       const o = attribute('origin', 'vec3'), sd = attribute('seed', 'float');
       const t = fract(u.time.div(LIFE).add(sd)).toVar();
       age.assign(t);
+      // Only some fires are lit: about one in six by day, one in three after dark. Each chimney has
+      // its own rank, so the same ones smoke (and a few more join them at dusk).
+      const share = float(0.18).add(su.night.mul(0.14));
+      lit.assign(float(1).sub(smoothstep(share.sub(0.02), share, attribute('rank', 'float'))));
       const secs = t.mul(LIFE);
       // Rising, slowing as it cools; carried off by the wind, more so as it rises out of shelter.
       const rise = secs.mul(0.5).sub(secs.mul(secs).mul(0.01));
@@ -71,7 +78,7 @@ export class Smoke {
       const n1 = texture(noiseTex, uv().mul(0.6).add(vec2(age.mul(0.3), age.mul(0.17)))).b;
       const soft = smoothstep(1.0, 0.15, r.add(n1.sub(0.5).mul(0.6)));
       const fade = smoothstep(0.0, 0.08, age).mul(float(1).sub(smoothstep(0.35, 1.0, age)));
-      const alpha = soft.mul(fade).mul(0.16);
+      const alpha = soft.mul(fade).mul(0.16).mul(lit);
       // Wood smoke: pale blue-grey, lit by the sky above and the sun.
       const light = su.ambTop.mul(0.8).add(su.sunColor.mul(max(su.sunDir.y, 0).mul(0.35).add(0.05)).div(Math.PI)).add(su.moonColor.mul(0.4));
       return vec4(vec3(0.46, 0.49, 0.54).mul(light), alpha);

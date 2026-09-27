@@ -243,7 +243,13 @@ function sampleGrid(grid, x, z, fallback) {
 // the Bagshot Row walk-through tunnels are inside hobbit holes, so they aren't lanes.
 // Footways on the set are narrow compacted-clay tracks.
 const LANE_WIDTH = { footway: 2.0, path: 1.3, steps: 1.4, track: 2.8, service: 3.6 };
-export const LANES = GEO.paths.filter((p) => !p.bridge && !p.tunnel).map((p) => ({ ...p, width: LANE_WIDTH[p.kind] ?? p.width }));
+// The minor paths mapped up to the walk-through doors come in from behind, where the holes' mounds
+// are: trim them back so they end at the lanes instead.
+const TUNNEL_DOORS = GEO.paths.filter((p) => p.tunnel).map((p) => p.pts[0]);
+export const LANES = GEO.paths.filter((p) => !p.bridge && !p.tunnel)
+  .map((p) => ({ ...p, pts: p.kind === 'path' ? p.pts.filter(([x, z]) => !TUNNEL_DOORS.some(([dx, dz]) => Math.hypot(x - dx, z - dz) < 6)) : p.pts }))
+  .filter((p) => p.pts.length > 1)
+  .map((p) => ({ ...p, width: LANE_WIDTH[p.kind] ?? p.width }));
 for (const lane of LANES) bakePolyline(lane.pts, lane.width, laneDist, laneWidth);
 
 /** 0..1 coverage of gravel lane at (x, z). */
@@ -666,7 +672,8 @@ function holeSpec(rand, o) {
 // meters to the sides and behind, so neighbouring holes read as one rolling bank.
 const moundProfile = (r) => (r >= 1 ? 0 : 1 - smoothstep(0.35, 1, r));
 export function moundTop(hole, v, d = 0) {
-  const rv = hole.width / 2 + 5, rd = 14 * Math.max(hole.scale, 0.7);
+  const k = hole.moundK ?? 1;
+  const rv = (hole.width / 2 + 5) * (0.6 + 0.4 * k), rd = 14 * Math.max(hole.scale, 0.7) * k;
   const r = Math.hypot((v - (hole.center || 0)) / rv, Math.max(d, 0) / rd);
   return (1.15 * hole.scale + hole.crown) * moundProfile(r);
 }
@@ -892,9 +899,12 @@ function nearestOnLanes(x, z, lanes) {
     }
   }
   cands.sort((a, b) => b.score - a.score);
+  const MOUND_PROBES = [];
+  for (let a = 0; a <= 13; a += 1)
+    for (let b = -8; b <= 8; b += 1) if ((b / 8.5) ** 2 + (a / 13.5) ** 2 < 1) MOUND_PROBES.push([a, b]);
   for (const c of cands) {
     if (HOLES.length >= HOLE_COUNT) break;
-    if (tooClose(c.x, c.z, 10)) continue;
+    if (tooClose(c.x, c.z, 9)) continue;
     // The slope below Bag End is its garden: no neighbours in front of it.
     {
       const be = HOLES[0], dx = c.x - be.x, dz = c.z - be.z;
@@ -911,11 +921,49 @@ function nearestOnLanes(x, z, lanes) {
     const tx = -c.nz, tz = c.nx;
     const probes = [[0, 0], [3, 0], [6, 0], [2, 3.5], [2, -3.5], [-(c.off - c.hwLane - 1.5), 0], [-2, 3], [-2, -3]];
     if (probes.some(([a, b]) => laneMask(c.x + c.nx * a + tx * b, c.z + c.nz * a + tz * b) > 0.02)) continue;
-    // Smaller-scale holes (for forced perspective on set) sit further up the slopes.
+    // No path may cross the turf mound: test its whole footprint (it reaches ~13 m back and several
+    // meters past the facade's ends).
+    // Smaller-scale holes (for forced perspective on set) sit further up the slopes; where a full
+    // mound would reach a path, a smaller hole may still fit.
     const r = rand();
-    const scale = r < 0.18 ? 0.62 : r < 0.42 ? 0.85 : 1;
+    let scale = r < 0.18 ? 0.62 : r < 0.42 ? 0.85 : 1;
+    const crosses = (sc) => {
+      const k = Math.max(sc, 0.7), kb = (3.2 * sc + 5.2) / 8.5;
+      return MOUND_PROBES.some(([a, b]) => laneMask(c.x + c.nx * a * k + tx * b * kb, c.z + c.nz * a * k + tz * b * kb) > 0.02);
+    };
+    while (scale > 0.62 && crosses(scale)) scale = scale > 0.85 ? 0.85 : 0.62;
+    if (crosses(scale)) continue;
     const laneY = baseHeight(c.px, c.pz);
     HOLES.push(makeHole(rand, c.x, c.z, -c.nx, -c.nz, laneY + 0.3, c.off - c.hwLane - 0.4, { scale, poor: laneY < 6 && rand() < 0.5 }));
+  }
+
+  // Where a mapped hole's mound would reach a path, pull the mound in until it clears: paths go
+  // round the holes, never over them.
+  for (const hole of HOLES) {
+    if (hole.arc) continue;
+    const over = () => {
+      for (let d = 0.6; d < 16; d += 0.7)
+        for (let v = -14; v <= 14; v += 0.7) {
+          if (moundTop(hole, v, d) < 0.4) continue;
+          if (laneMask(hole.x - hole.fx * d + hole.fz * v, hole.z - hole.fz * d - hole.fx * v) > 0.1) return true;
+        }
+      return false;
+    };
+    // First try sliding the hole a little along its lane (keeping clear of its neighbours)...
+    if (over()) {
+      const x0 = hole.x, z0 = hole.z;
+      let done = false;
+      for (let t = 0.5; t <= 7 && !done; t += 0.5)
+        for (const sd of [1, -1]) {
+          hole.x = x0 + hole.fz * t * sd; hole.z = z0 - hole.fx * t * sd;
+          if (laneMask(hole.x + hole.fx * 1.5, hole.z + hole.fz * 1.5) > 0.02) continue; // its own front stays clear
+          if (HOLES.some((o) => o !== hole && Math.hypot(o.x - hole.x, o.z - hole.z) < 8)) continue;
+          if (!over()) { done = true; break; }
+        }
+      if (!done) { hole.x = x0; hole.z = z0; }
+    }
+    // ...then pull the mound in until it clears.
+    for (hole.moundK = 1; hole.moundK > 0.3 && over(); hole.moundK -= 0.05);
   }
 
   // Door paths from the lane to each door, then the yard and bed masks.
@@ -926,7 +974,15 @@ function nearestOnLanes(x, z, lanes) {
       const g = hole.gateX || 0.2;
       const bu = (hole.gateU ?? hole.yard) + 0.4;
       const b = [hole.x + hole.fx * bu + hole.fz * g, hole.z + hole.fz * bu - hole.fx * g];
-      bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, hole.laneY + 0.1], laneHeight, 1, nextLaneId++);
+      // It meets the lane at the lane's own height there.
+      const bi = Math.round((b[0] + INNER_HALF) / RES), bj = Math.round((b[1] + INNER_HALF) / RES);
+      let meet = hole.laneY + 0.1, best = Infinity;
+      for (let dj = -8; dj <= 8; dj++) for (let di = -8; di <= 8; di++) {
+        const k = (bj + dj) * N + bi + di, d = laneDist[k] - laneWidth[k] * 0.5;
+        if (laneWidth[k] > 0 && d < best) { best = d; meet = laneHeight[k]; }
+      }
+      hole.laneY = meet - 0.1; // (the lane ramps; its height here, not where Bag End was placed from)
+      bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, meet], laneHeight, 1, nextLaneId++);
       // A gravel strip under the flagstones from the door to the top of the steps.
       const d0 = [hole.x + hole.fx * 0.6, hole.z + hole.fz * 0.6];
       bakePolyline([d0, a], 2.3, laneDist, laneWidth, [hole.y + 0.05, hole.y + 0.05], laneHeight, 1, nextLaneId++);
