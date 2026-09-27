@@ -146,8 +146,12 @@ function sculpt(x, z, h) {
   if (GD_BANK) {
     const dx = x - GD_BANK.x, dz = z - GD_BANK.z;
     const back = -(dx * GD_BANK.fx + dz * GD_BANK.fz), side = dx * GD_BANK.fz - dz * GD_BANK.fx;
-    const dp = polyDistSimple(GD_BANK.poly, x, z);
-    h += 6 * smoothstep(10, 110, dp) * smoothstep(-6, 20, back) * (1 - smoothstep(50, 110, Math.abs(side))) * smoothstep(4, 28, lakeDist(x, z));
+    // Cheap factors first: most of the map is outside the swell, and there it adds nothing.
+    const k = smoothstep(-6, 20, back) * (1 - smoothstep(50, 110, Math.abs(side)));
+    if (k > 0) {
+      const kl = k * smoothstep(4, 28, lakeDist(x, z));
+      if (kl > 0) h += 6 * smoothstep(10, 110, polyDistSimple(GD_BANK.poly, x, z)) * kl;
+    }
   }
   // Bag End's knoll: the oak crowns a steep, rounded hill right behind the house.
   // Centered a few meters behind the oak (away from Bag End), so the house sits on its flank.
@@ -188,7 +192,20 @@ let nextLaneId = 0;
 const yardGrid = new Uint8Array(N * N);
 const bedGrid = new Uint8Array(N * N);
 
+// Lane edges wobble a little (±0.15 m) so they don't run ruler-straight: the same offset for every
+// lane at a given cell, so it's computed once.
+let edgeWobble = null;
+
 function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = width * 0.5 + 30, id = -1) {
+  // Every cell within `reach` of a segment keeps the nearest segment's distance (and, for lanes, its
+  // width and surface height; for `id`s, the second-nearest other lane too). Most cells visited are
+  // already closer to something else, so each cell first checks the squared distance against the
+  // most it could need and skips the square root when it can't win.
+  if (widthOut && !edgeWobble) {
+    edgeWobble = new Float32Array(N * N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) edgeWobble[j * N + i] = Math.sin((i * RES - INNER_HALF) * 0.21 + (j * RES - INNER_HALF) * 0.13) * 0.15;
+  }
+  const half = width * 0.5;
   for (let s = 0; s < pts.length - 1; s++) {
     const [ax, az] = pts[s], [bx, bz] = pts[s + 1];
     const i0 = Math.max(0, Math.floor((Math.min(ax, bx) - reach + INNER_HALF) / RES));
@@ -197,18 +214,30 @@ function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = widt
     const j1 = Math.min(N - 1, Math.ceil((Math.max(az, bz) + reach + INNER_HALF) / RES));
     const dx = bx - ax, dz = bz - az;
     const len2 = dx * dx + dz * dz || 1e-6;
+    const v0 = values ? values[s] : 0, dv = values ? values[s + 1] - values[s] : 0;
     for (let j = j0; j <= j1; j++) {
       const z = j * RES - INNER_HALF;
       for (let i = i0; i <= i1; i++) {
         const x = i * RES - INNER_HALF;
-        const t = clamp(((x - ax) * dx + (z - az) * dz) / len2, 0, 1);
-        const px = ax + dx * t - x, pz = az + dz * t - z;
-        const d = Math.sqrt(px * px + pz * pz) + (widthOut ? Math.sin(x * 0.21 + z * 0.13) * 0.15 : 0);
         const k = j * N + i;
+        let t = ((x - ax) * dx + (z - az) * dz) / len2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = ax + dx * t - x, pz = az + dz * t - z;
+        const q = px * px + pz * pz;
+        const wob = widthOut ? edgeWobble[k] : 0;
+        // The largest center distance that could still change this cell.
+        let lim;
+        if (id >= 0) {
+          lim = dist[k] - widthOut[k] * 0.5;
+          if (laneId[k] !== id) lim = Math.max(lim, lane2Dist[k] - lane2Width[k] * 0.5);
+          lim += half - wob;
+        } else lim = widthOut ? dist[k] - widthOut[k] * 0.5 + half - wob : dist[k];
+        if (lim <= 0 || q >= lim * lim) continue;
+        const d = Math.sqrt(q) + wob;
         if (id >= 0) {
           // Lanes: keep the nearest and the second-nearest distinct lane (compared by edge).
-          const e = d - width * 0.5;
-          const val = values ? values[s] + (values[s + 1] - values[s]) * t : 0;
+          const e = d - half;
+          const val = v0 + dv * t;
           if (laneId[k] === id) {
             if (e < dist[k] - widthOut[k] * 0.5) { dist[k] = d; widthOut[k] = width; valueOut[k] = val; }
           } else if (e < dist[k] - widthOut[k] * 0.5) {
@@ -220,10 +249,10 @@ function bakePolyline(pts, width, dist, widthOut, values, valueOut, reach = widt
           continue;
         }
         // Lanes compare edges (a wide lane wins over a narrow one it overlaps); plain fields compare centers.
-        if (widthOut ? d - width * 0.5 < dist[k] - widthOut[k] * 0.5 : d < dist[k]) {
+        if (widthOut ? d - half < dist[k] - widthOut[k] * 0.5 : d < dist[k]) {
           dist[k] = d;
           if (widthOut) widthOut[k] = width;
-          if (values) valueOut[k] = values[s] + (values[s + 1] - values[s]) * t;
+          if (values) valueOut[k] = v0 + dv * t;
         }
       }
     }
@@ -427,7 +456,11 @@ const PADS = [
   { poly: building("Sandyman's Mill").poly, r0: 0.8, r1: 4, y: MILL.y },
   { poly: GREEN_DRAGON.poly, r0: 2.5, r1: 9, y: GREEN_DRAGON.y },
   { poly: GREEN_DRAGON.shed, r0: 1.5, r1: 5, y: GREEN_DRAGON.shedY },
-];
+].map((p) => {
+  // The box around the pad's reach, so points well away from it skip the polygon test.
+  const xs = p.poly.map((q) => q[0]), zs = p.poly.map((q) => q[1]);
+  return { ...p, x0: Math.min(...xs) - p.r1, x1: Math.max(...xs) + p.r1, z0: Math.min(...zs) - p.r1, z1: Math.max(...zs) + p.r1 };
+});
 
 // ---------------------------------------------------------------------------------------------
 // Lane profiles
@@ -605,7 +638,8 @@ function baseHeight(x, z) {
     h = lerp(h, Math.min(h, bank) - hv * hv * m * 0.25, k);
   }
   for (const p of PADS) {
-    const d = p.poly ? Math.max(0, polyDistSimple(p.poly, x, z)) : Math.hypot(x - p.x, z - p.z);
+    if (x < p.x0 || x > p.x1 || z < p.z0 || z > p.z1) continue;
+    const d = Math.max(0, polyDistSimple(p.poly, x, z));
     if (d < p.r1) h = lerp(h, p.y, 1 - smoothstep(p.r0, p.r1, d));
   }
   // The mill race: a channel of open water under the waterwheel.

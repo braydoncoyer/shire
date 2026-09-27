@@ -162,11 +162,13 @@ export class App {
     this.lighting.update(0, camera);
     this.grass.update(0, camera, this.settings, renderer);
     this.vegetation.update(0, this.settings, camera);
-    await renderer.compileAsync(scene, camera);
-    progress('Lighting the lamps');
-    // Warm up behind the loading screen, so nothing hitches the first time it comes into view: one
-    // frame with nothing culled and every tree detail level shown gives every mesh its buffers,
-    // bindings and pipelines in every pass, then a frame toward each heading settles the rest.
+    // Warm up behind the loading screen, so nothing hitches the first time it comes into view.
+    // Rendering the real passes (shadow maps, the lake reflection, the multisampled scene, sky and
+    // post) with nothing culled and every tree detail level shown, then toward each heading, builds
+    // every pipeline the walk will need. The first round only queues them: they're created
+    // asynchronously, so the GPU compiles them all in parallel (renderer.compileAsync() would work
+    // through them one at a time, and for the canvas rather than the scene pass), and nothing is
+    // drawn until they're ready. The second round then fills every buffer and binding.
     const culled = [];
     scene.traverse((o) => {
       if (o.isMesh && o.frustumCulled) {
@@ -174,23 +176,31 @@ export class App {
         culled.push(o);
       }
     });
-    this.vegetation.showAll(true);
-    this.sky.render(camera);
-    this.post.render();
-    await tick();
-    this.vegetation.showAll(false);
-    for (const o of culled) o.frustumCulled = true;
     const yaw = this.player.yaw;
-    for (let k = 1; k <= 6; k++) {
+    this.rain.mesh.visible = true; // it only shows in rain; build it now all the same
+    const warm = async (k) => {
       this.player.yaw = yaw + (k * Math.PI) / 3;
       this.player.update(0);
       this.camera.updateMatrixWorld();
       this.lighting.update(0, camera);
-      this.vegetation.update(0, this.settings, camera);
+      this.vegetation.showAll(k === 0);
+      if (k > 0) this.vegetation.update(0, this.settings, camera);
+      if (k === 1) for (const o of culled) o.frustumCulled = true;
       this.sky.render(camera);
       this.post.render();
       await tick();
-    }
+    };
+    const pipes = renderer._pipelines, pending = [];
+    const updateForRender = pipes.updateForRender;
+    pipes.updateForRender = (ro) => pipes.getForRender(ro, pending);
+    for (let k = 0; k <= 6; k++) await warm(k);
+    pipes.updateForRender = updateForRender;
+    for (const o of culled) o.frustumCulled = false;
+    let done = 0;
+    await Promise.all(pending.map((p) => p.then(() => progress('Compiling shaders', ++done / pending.length))));
+    progress('Lighting the lamps');
+    for (let k = 0; k <= 6; k++) await warm(k);
+    this.rain.mesh.visible = false;
     this.player.update(0);
     this.clock = new THREE.Timer();
     renderer.setAnimationLoop(() => this.frame());

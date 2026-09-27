@@ -147,5 +147,8 @@ Dev tools (dev server must be running):
 - `npm run shot -- <name> "<query>"` renders headless WebGPU screenshots into `shots/`.
 - `node scripts/bench.mjs "<query>" "label=<js>" ...` A/B frame times inside one page, uncapped.
 - `node scripts/profile.mjs "<query>"` CPU profile of the render loop.
+- `node scripts/loadtime.mjs` times each loading stage (cold); `node scripts/loadprofile.mjs` CPU-profiles
+  the whole load; `node scripts/hitches.mjs` counts pipelines compiled after loading (each a potential
+  hitch). `BASE=https://… ` points them at a deployed copy.
 - `node scripts/ui.mjs` runs through the start overlay, settings presets and photo mode in headless
   Chrome and takes screenshots.

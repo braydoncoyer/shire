@@ -23,9 +23,10 @@ if (!navigator.gpu) {
   const app = new App();
   window.shire = app;
   app
-    .init(document.getElementById('app'), (msg) => {
+    .init(document.getElementById('app'), (msg, part = 0) => {
+      // `part` (0..1) moves the bar along within a long stage.
       status.textContent = msg;
-      setProgress((STAGES.indexOf(msg) + 1) / (STAGES.length + 1));
+      setProgress((STAGES.indexOf(msg) + 1 + part) / (STAGES.length + 1));
     })
     .then(() => {
       setProgress(1);
