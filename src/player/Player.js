@@ -24,6 +24,7 @@ export class Player {
     this.bob = 0;
     this.colliders = []; // { x, z, r } circles and { x, z, hx, hz, rot } boxes
     this.sensitivity = 0.0021;
+    this.invertY = false;
     camera.rotation.order = 'YXZ';
   }
 
@@ -37,7 +38,7 @@ export class Player {
   update(dt) {
     const inp = this.input;
     this.yaw -= inp.mouseDX * this.sensitivity;
-    this.pitch = THREE.MathUtils.clamp(this.pitch - inp.mouseDY * this.sensitivity, -1.5, 1.5);
+    this.pitch = THREE.MathUtils.clamp(this.pitch - inp.mouseDY * this.sensitivity * (this.invertY ? -1 : 1), -1.5, 1.5);
     if (inp.wasPressed('KeyF')) {
       this.fly = !this.fly;
       if (this.fly) this.pos.y += EYE; else this.pos.y -= EYE;

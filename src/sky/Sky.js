@@ -402,6 +402,7 @@ export class Sky {
     for (const rt of this.skyRTs) rt.setSize(sw, sh);
     this.rtSize.value.set(sw, sh);
     this.historyWeight.value = 0;
+    this.resized = true;
   }
 
   /** Drop the history, e.g. after a big jump in time of day or weather. */
@@ -422,6 +423,12 @@ export class Sky {
     r.setRenderTarget(cur);
     this.skyQuad.render(r);
     r.setRenderTarget(prev);
+    // The history is never drawn to, so after a resize its texture has to be reallocated at the
+    // new size before the copy.
+    if (this.resized) {
+      this.resized = false;
+      r.initRenderTarget(hist);
+    }
     r.copyTextureToTexture(cur.texture, hist.texture);
     // Rotation-only view-projection, for reprojecting directions next frame.
     _m.copy(camera.matrixWorldInverse).setPosition(0, 0, 0);

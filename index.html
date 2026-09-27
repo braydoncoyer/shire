@@ -4,37 +4,175 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>The Shire</title>
+    <meta name="description" content="A first-person walk through Hobbiton, generated in the browser with Three.js and WebGPU." />
     <link rel="icon" href="./favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0f0c; color: #f3ecd8; }
-      body { font-family: Inter, system-ui, sans-serif; }
+      :root {
+        --ink: #f3ecd8;
+        --ink-dim: rgba(243, 236, 216, 0.62);
+        --ink-faint: rgba(243, 236, 216, 0.14);
+        --glass: rgba(16, 19, 14, 0.78);
+        --glass-edge: rgba(243, 236, 216, 0.12);
+        --accent: #d9b45a;
+        --accent-ink: #1b1a12;
+        --serif: 'Cormorant Garamond', Georgia, serif;
+        --sans: Inter, system-ui, sans-serif;
+        --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0f0c; color: var(--ink); }
+      body { font-family: var(--sans); -webkit-font-smoothing: antialiased; }
       #app canvas { display: block; }
+      [hidden] { display: none !important; }
+      button { font: inherit; color: inherit; }
+
+      /* Loading screen */
       #loader {
         position: fixed; inset: 0; display: grid; place-items: center; background: #0d0f0c;
-        transition: opacity 1.2s ease; z-index: 10;
+        transition: opacity 1.2s ease; z-index: 30;
       }
       #loader.done { opacity: 0; pointer-events: none; }
-      #loader h1 { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 56px; margin: 0; letter-spacing: 0.02em; }
-      #loader p { text-align: center; opacity: 0.6; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
-      #prompt {
-        position: fixed; left: 50%; bottom: 12%; transform: translateX(-50%); pointer-events: none;
-        text-align: center; text-shadow: 0 1px 12px rgba(0,0,0,0.6);
+      #loader .inner { text-align: center; padding: 0 24px; }
+      #loader h1 { font-family: var(--serif); font-weight: 500; font-size: clamp(40px, 8vw, 64px); margin: 0; letter-spacing: 0.02em; }
+      #loader p { opacity: 0.6; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; margin: 14px 0 0; }
+      #loader .bar { width: 180px; height: 1px; background: var(--ink-faint); margin: 22px auto 0; overflow: hidden; }
+      #loader .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.6s var(--ease); }
+
+      /* Start / paused overlay */
+      #start {
+        position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+        padding: 0 16px 9vh; cursor: pointer; z-index: 5;
+        background: radial-gradient(ellipse at 50% 100%, rgba(8, 10, 6, 0.55), transparent 65%);
+        transition: opacity 0.4s var(--ease);
       }
-      #prompt .title { font-family: 'Cormorant Garamond', serif; font-size: 34px; font-style: italic; }
-      #prompt .keys { font-size: 12px; letter-spacing: 0.08em; opacity: 0.8; margin-top: 8px; text-transform: uppercase; }
-      #fps { position: fixed; top: 10px; left: 12px; font: 12px/1 ui-monospace, monospace; opacity: 0.7; }
+      #start .title { font-family: var(--serif); font-size: clamp(28px, 4.5vw, 40px); font-style: italic; text-shadow: 0 1px 14px rgba(0, 0, 0, 0.6); text-align: center; }
+      #start .keys {
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin-top: 14px; max-width: 760px;
+        font-size: 12px; letter-spacing: 0.04em; color: var(--ink-dim); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+      }
+      kbd {
+        display: inline-block; min-width: 1.5em; padding: 1px 5px; margin-right: 4px; border-radius: 4px; text-align: center;
+        font: 600 11px/1.5 var(--sans); color: var(--ink); background: rgba(243, 236, 216, 0.1); border: 1px solid var(--glass-edge);
+      }
+      #start .actions { display: flex; gap: 10px; margin-top: 22px; }
+      .pill {
+        padding: 9px 16px; border-radius: 999px; cursor: pointer; font-size: 13px; font-weight: 500;
+        background: var(--glass); border: 1px solid var(--glass-edge); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        transition: background 0.2s, border-color 0.2s, transform 0.2s var(--ease);
+      }
+      .pill:hover { background: rgba(38, 42, 30, 0.85); border-color: rgba(243, 236, 216, 0.28); }
+      .pill:active { transform: scale(0.97); }
+      .pill:focus-visible, .seg button:focus-visible, .row input:focus-visible, .row select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .pill.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+      .pill.primary:hover { background: #e6c46e; }
+
+      #fps { position: fixed; top: 10px; left: 12px; font: 12px/1 ui-monospace, monospace; opacity: 0.7; z-index: 4; }
+
+      /* Side panels: settings and photo mode */
+      .panel {
+        position: fixed; top: 16px; right: 16px; bottom: 16px; width: 320px; max-width: calc(100vw - 32px);
+        display: flex; flex-direction: column; z-index: 10; border-radius: 14px; overflow: hidden;
+        background: var(--glass); border: 1px solid var(--glass-edge);
+        backdrop-filter: blur(16px) saturate(1.1); -webkit-backdrop-filter: blur(16px) saturate(1.1);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+        transform: translateX(0); opacity: 1; transition: transform 0.35s var(--ease), opacity 0.25s;
+      }
+      .panel.closed { transform: translateX(24px); opacity: 0; pointer-events: none; }
+      .panel header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
+      .panel h2 { font-family: var(--serif); font-weight: 600; font-size: 26px; margin: 0; }
+      .panel .close { background: none; border: 0; cursor: pointer; font-size: 22px; line-height: 1; color: var(--ink-dim); padding: 4px 6px; border-radius: 6px; }
+      .panel .close:hover { color: var(--ink); background: var(--ink-faint); }
+      .panel .body { overflow-y: auto; padding: 0 18px 18px; flex: 1; scrollbar-width: thin; scrollbar-color: var(--ink-faint) transparent; }
+      .panel footer { padding: 12px 18px 16px; border-top: 1px solid var(--glass-edge); display: flex; gap: 8px; flex-wrap: wrap; }
+      .panel h3 { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin: 18px 0 8px; }
+      .panel .hint { font-size: 11.5px; color: var(--ink-dim); line-height: 1.45; margin: 6px 0 0; }
+      .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; padding: 6px 0; font-size: 13px; }
+      .row label { color: var(--ink); }
+      .row output { font: 12px ui-monospace, monospace; color: var(--ink-dim); min-width: 3.5em; text-align: right; }
+      .row input[type=range] { grid-column: 1 / -1; width: 100%; margin: 2px 0 0; accent-color: var(--accent); }
+      .row select {
+        background: rgba(0, 0, 0, 0.3); color: var(--ink); border: 1px solid var(--glass-edge); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px;
+      }
+      .row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+      .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border-radius: 9px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-edge); }
+      .seg button { border: 0; background: none; border-radius: 6px; padding: 6px 0; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--ink-dim); transition: background 0.2s, color 0.2s; }
+      .seg button:hover { color: var(--ink); }
+      .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+
+      /* Photo mode */
+      #photo-flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 20; transition: opacity 0.5s ease-out; }
+      #photo-flash.on { opacity: 0.55; transition: none; }
+      #photo-hint {
+        position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 6; pointer-events: none; white-space: nowrap;
+        font-size: 12px; color: var(--ink-dim); text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+      }
+      #toast {
+        position: fixed; left: 50%; top: 20px; transform: translate(-50%, -8px); z-index: 21; opacity: 0; pointer-events: none;
+        padding: 8px 14px; border-radius: 999px; font-size: 13px; background: var(--glass); border: 1px solid var(--glass-edge);
+        transition: opacity 0.3s, transform 0.3s var(--ease);
+      }
+      #toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+      @media (max-width: 560px) {
+        .panel { top: auto; left: 16px; right: 16px; width: auto; height: 62vh; }
+        #photo-hint { display: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .panel, #start, .pill { transition: none; }
+      }
     </style>
   </head>
   <body>
     <div id="app"></div>
-    <div id="loader"><div><h1>The Shire</h1><p id="loader-status">Loading</p></div></div>
-    <div id="prompt">
-      <div class="title">Click to walk in the Shire</div>
-      <div class="keys">WASD move · Shift run · Space jump · F fly · [ ] time of day · Esc release</div>
+
+    <div id="loader">
+      <div class="inner">
+        <h1>The Shire</h1>
+        <p id="loader-status">Loading</p>
+        <div class="bar"><i id="loader-bar"></i></div>
+      </div>
     </div>
+
+    <div id="start" hidden>
+      <div class="title" id="start-title">Click to walk in the Shire</div>
+      <div class="keys">
+        <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>walk</span>
+        <span><kbd>Shift</kbd>run</span>
+        <span><kbd>Space</kbd>jump</span>
+        <span><kbd>F</kbd>fly</span>
+        <span><kbd>[</kbd><kbd>]</kbd>time of day</span>
+        <span><kbd>Tab</kbd>settings</span>
+        <span><kbd>P</kbd>photo mode</span>
+        <span><kbd>M</kbd>mute</span>
+        <span><kbd>Esc</kbd>release mouse</span>
+      </div>
+      <div class="actions">
+        <button class="pill primary" id="start-go">Enter the Shire</button>
+        <button class="pill" id="start-settings">Settings</button>
+        <button class="pill" id="start-photo">Photo mode</button>
+      </div>
+    </div>
+
+    <aside class="panel closed" id="settings" aria-label="Settings" aria-hidden="true">
+      <header><h2>Settings</h2><button class="close" data-close aria-label="Close settings">×</button></header>
+      <div class="body" id="settings-body"></div>
+      <footer><button class="pill" id="settings-reset">Reset to defaults</button></footer>
+    </aside>
+
+    <aside class="panel closed" id="photo" aria-label="Photo mode" aria-hidden="true">
+      <header><h2>Photo mode</h2><button class="close" data-close aria-label="Leave photo mode">×</button></header>
+      <div class="body" id="photo-body"></div>
+      <footer>
+        <button class="pill primary" id="photo-capture">Save photo</button>
+        <button class="pill" id="photo-leave">Leave</button>
+      </footer>
+    </aside>
+    <div id="photo-hint" hidden>Click to look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> <kbd>Q</kbd><kbd>E</kbd> move · <kbd>Enter</kbd> save · <kbd>H</kbd> hide panel · <kbd>P</kbd> leave</div>
+    <div id="photo-flash"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+
     <div id="fps" hidden></div>
     <script type="module" src="/src/main.js"></script>
   </body>

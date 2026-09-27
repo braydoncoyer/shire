@@ -11,7 +11,9 @@ export class Input {
     this.listeners = new Set();
 
     addEventListener('keydown', (e) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+      // Keys typed into a slider or menu belong to it, and in the settings and photo panels Tab,
+      // Enter and Space move focus and press buttons. Everything else still walks.
+      if (e.target instanceof Element && (e.target.closest('input, select') || (e.target.closest('.panel') && ['Tab', 'Enter', 'Space'].includes(e.code)))) return;
       if (!e.repeat) this.pressed.add(e.code);
       this.keys.add(e.code);
       if (e.code === 'Space' || e.code === 'Tab') e.preventDefault();
@@ -23,6 +25,8 @@ export class Input {
     });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
+      // Once the mouse is captured, the keyboard belongs to the walk, not a panel button.
+      if (this.locked && document.activeElement instanceof HTMLElement) document.activeElement.blur();
       for (const f of this.listeners) f(this.locked);
     });
     addEventListener('mousemove', (e) => {

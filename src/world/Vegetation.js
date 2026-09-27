@@ -168,6 +168,7 @@ export function planTrees() {
 export class Vegetation {
   constructor(sky, noiseTex, lampLight) {
     this.lampLight = lampLight;
+    this.lodScale = 1; // quality setting: scales the detail-level distances
     this.u = {
       time: uniform(0),
       windDir: uniform(new THREE.Vector3(0.7, 0, -0.7)),
@@ -255,7 +256,7 @@ export class Vegetation {
         const d = Math.hypot(t.x - cx, t.z - cz) / Math.max(t.scale, 0.6);
         const cur = c.lod[i];
         let want = 0;
-        for (let k = 0; k < LOD_DIST.length; k++) if (d > LOD_DIST[k] * (cur > k ? 0.93 : cur < 0 ? 1 : 1.07)) want = k + 1;
+        for (let k = 0; k < LOD_DIST.length; k++) if (d > LOD_DIST[k] * this.lodScale * (cur > k ? 0.93 : cur < 0 ? 1 : 1.07)) want = k + 1;
         if (want !== cur) {
           c.lod[i] = want;
           changed = true;

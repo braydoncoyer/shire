@@ -17,6 +17,9 @@ import { Boundaries } from './world/Boundaries.js';
 import { Player } from './player/Player.js';
 import { Post } from './post/Post.js';
 import { Hud } from './ui/Hud.js';
+import { Panel } from './ui/Panel.js';
+import { PhotoMode } from './ui/PhotoMode.js';
+import { Ambience } from './audio/Ambience.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
 import { Smoke } from './world/Smoke.js';
@@ -41,7 +44,7 @@ export class App {
     this.settings = new Settings();
 
     const renderer = (this.renderer = new THREE.WebGPURenderer({ antialias: false, powerPreference: 'high-performance' }));
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+    renderer.setPixelRatio(this.pixelRatio());
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.AgXToneMapping;
     renderer.toneMappingExposure = 1;
@@ -137,7 +140,11 @@ export class App {
     if (s.fly) this.player.fly = true;
 
     this.post = new Post(renderer, scene, camera, this.sky);
+    this.applyQuality();
     this.hud = new Hud(this);
+    this.panel = new Panel(this);
+    this.photo = new PhotoMode(this);
+    this.audio = new Ambience(this);
 
     addEventListener('resize', () => this.resize());
     this.resize();
@@ -180,6 +187,38 @@ export class App {
     renderer.setAnimationLoop(() => this.frame());
   }
 
+  pixelRatio() {
+    const s = this.settings;
+    return Math.min(devicePixelRatio, s.maxDpr) * s.renderScale;
+  }
+
+  /** Push the quality settings into the renderer and the systems they tune. */
+  applyQuality() {
+    const s = this.settings;
+    if (Math.abs(this.renderer.getPixelRatio() - this.pixelRatio()) > 1e-3) {
+      this.renderer.setPixelRatio(this.pixelRatio());
+      this.resize();
+    }
+    const light = this.lighting.light;
+    if (light.shadow.mapSize.x !== s.shadowSize) {
+      light.shadow.mapSize.set(s.shadowSize, s.shadowSize);
+      for (const l of this.lighting.csm.lights) l.shadow.mapSize.set(s.shadowSize, s.shadowSize);
+      this.lighting.frame = 0; // redraw every cascade
+    }
+    this.post.configure({ msaa: s.msaa });
+    for (const layer of this.grass.layers) if (layer.L.name === 'far') layer.mesh.visible = s.grassReach === 'full';
+    this.vegetation.lodScale = s.treeDetail;
+    if (this.sky.resolutionScale !== s.skyRes) {
+      this.sky.resolutionScale = s.skyRes;
+      this.resize();
+    }
+    this.water.reflection.reflector.resolutionScale = s.reflectionRes;
+    this.camera.fov = s.fov;
+    this.camera.updateProjectionMatrix();
+    this.player.sensitivity = 0.0021 * s.sensitivity;
+    this.player.invertY = s.invertY;
+  }
+
   resize() {
     const w = innerWidth, h = innerHeight;
     this.renderer.setSize(w, h);
@@ -220,9 +259,12 @@ export class App {
     this.post.exposure.value = this.lighting.finalExposure();
     this.post.indoor.value = this.lighting.indoorMix;
     this.post.bloomStrength.value = s.bloom;
+    this.photo.update(dt);
+    this.audio.update(dt);
 
     this.sky.render(this.camera);
     this.post.render();
+    this.photo.afterRender();
     this.hud.update(dt);
     this.input.endFrame();
   }
