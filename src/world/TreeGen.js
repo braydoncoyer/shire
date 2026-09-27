@@ -19,6 +19,19 @@ export const SPECIES = {
     leaves: { perTip: 10, size: 2.0, spread: 1.4, texture: 'broadleaf', aspect: 1 },
     color: 0x4a7a26,
   },
+  // The oak over Bag End: a short, massive trunk and long heavy limbs reaching out almost level,
+  // so the crown spreads far wider than it is tall, right across the top of the knoll.
+  bagEndOak: {
+    trunk: { length: 3.4, radius: 0.85, wobble: 0.1 },
+    levels: [
+      { children: 9, start: 0.45, angle: 76, lenFactor: 1, radFactor: 0.5, wobble: 0.16, up: 0.035, droop: 0.03, segLen: 1.3, spread: 1 },
+      { children: 6, start: 0.2, angle: 50, lenFactor: 0.5, radFactor: 0.55, wobble: 0.26, up: 0.08, droop: 0.05, segLen: 0.9, spread: 1 },
+      { children: 4, start: 0.3, angle: 42, lenFactor: 0.55, radFactor: 0.6, wobble: 0.3, up: 0.1, droop: 0.04, segLen: 0.7, spread: 1 },
+    ],
+    firstLength: 12.5,
+    leaves: { perTip: 9, size: 2.2, spread: 1.3, texture: 'broadleaf', aspect: 1 },
+    color: 0x4a7a26,
+  },
   // The Party Tree: an old pine with long, low, sweeping limbs and dark needle clusters.
   pine: {
     trunk: { length: 5.5, radius: 0.75, wobble: 0.08 },

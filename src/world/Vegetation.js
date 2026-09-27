@@ -17,7 +17,7 @@ import {
 import { mulberry32, fbm2 } from '../util/noise.js';
 import { LAYERS } from '../core/Layers.js';
 
-const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1, partyPine: 1 };
+const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1, partyPine: 1, bagEndOak: 1 };
 // Distances (m, per unit of tree scale) beyond which trees switch to the next level of detail.
 const LOD_DIST = [90, 300];
 const TREE_SEED = attribute('treeSeed', 'float');
@@ -62,7 +62,11 @@ export function planTrees() {
   // Landmarks: the Party Tree (a pine) and the oak above Bag End.
   const pt = LANDMARKS.partyTree, bo = LANDMARKS.bagEndOak;
   add('partyPine', pt.x, pt.z, 1.3, 0);
-  add('oak', bo.x, bo.z, 1.3, 1);
+  add('bagEndOak', bo.x, bo.z, 1.25, 0);
+  // The rounded hill beyond Bag End: a lone tree on its crown, pines along its left shoulder.
+  const bh = LANDMARKS.backHill;
+  add('pine', bh.x, bh.z, 1.25, 0);
+  for (const [dx, dz, sc] of bh.pines) add('pine', bh.x + dx, bh.z + dz, sc, 0);
 
   // Every other tree mapped individually.
   for (const t of GEO.trees) {
@@ -127,14 +131,6 @@ export function planTrees() {
     const x = VILLAGE.x + Math.cos(a) * r, z = VILLAGE.z + Math.sin(a) * r;
     if (blocked(x, z, 3) || !clear(x, z, 28)) continue;
     add('oak', x, z, 0.55 + rand() * 0.4, rand() < 0.35 ? 3 : undefined);
-    placed++;
-  }
-  for (let k = 0, placed = 0; k < 2000 && placed < 5; k++) {
-    // Behind (west and north-west of) Bag End, on the high ground.
-    const a = Math.PI + (rand() - 0.5) * 1.6, r = 45 + rand() * 60;
-    const x = LANDMARKS.bagEnd.x + Math.cos(a) * r, z = LANDMARKS.bagEnd.z + Math.sin(a) * r;
-    if (blocked(x, z, 3) || !clear(x, z, 30)) continue;
-    add('pine', x, z, 0.9 + rand() * 0.35, 0);
     placed++;
   }
 

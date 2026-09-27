@@ -35,18 +35,43 @@ const pondPoly = GEO.water.find((w) => w.name === 'Frog Pond').poly;
 
 const [beX, beZ] = centroid(building('Bag End').poly);
 const [ptX, ptZ] = tree('The Party Tree');
-const [oakX, oakZ] = tree('Big Oak Tree');
+// Bag End looks out toward the Party Tree. On film its oak stands on the knoll behind the door and
+// to the right (the survey marks it to the left), and a rounded hill rises beyond, off to the left.
+const BE_F = (() => { const x = ptX - beX, z = ptZ - beZ, n = Math.hypot(x, z); return [x / n, z / n]; })();
+const [oakX, oakZ] = [beX - BE_F[0] * 13.5 + BE_F[1] * 4.5, beZ - BE_F[1] * 13.5 - BE_F[0] * 4.5];
+// The view up the village from the lake path, as on film: an open slope from the lane up to Bag End
+// with holes either side of it, and the lane passing between two grassy banks in the foreground.
+const VISTA = { ax: 59, az: -50, bx: beX, bz: beZ };
+function vistaDist(x, z) {
+  const dx = VISTA.bx - VISTA.ax, dz = VISTA.bz - VISTA.az, l2 = dx * dx + dz * dz;
+  const t = Math.max(0, Math.min(1, ((x - VISTA.ax) * dx + (z - VISTA.az) * dz) / l2));
+  return { d: Math.hypot(VISTA.ax + dx * t - x, VISTA.az + dz * t - z), t: t * Math.sqrt(l2) };
+}
+const BACK_HILL = (() => {
+  const a = (24 * Math.PI) / 180, d = 115; // bearing left of straight back from the door, distance
+  const bx = -BE_F[0] * Math.cos(a) - BE_F[1] * Math.sin(a), bz = -BE_F[1] * Math.cos(a) + BE_F[0] * Math.sin(a);
+  const x = beX - BE_F[0] * 7 + bx * d, z = beZ - BE_F[1] * 7 + bz * d;
+  // Pines down its left shoulder (as seen from Bag End's lane).
+  const lx = BE_F[1] * -1, lz = -BE_F[0] * -1; // viewer's left when facing the door
+  const pines = [[18, 0.95], [27, 1.1], [33, 0.85]].map(([t, sc], i) => [lx * t + bx * (i - 1) * 6, lz * t + bz * (i - 1) * 6, sc]);
+  return { x, z, h: 24, r: 58, pines };
+})();
+// Along the lane below Bag End's garden, the downhill side is a dry-stone wall with the lane on top.
+const BE_WALL = { x: beX + BE_F[0] * 6, z: beZ + BE_F[1] * 6, r: 24, doorX: beX - BE_F[0] * 7, doorZ: beZ - BE_F[1] * 7, fx: BE_F[0], fz: BE_F[1] };
+export const bagEndWallZone = (x, z) =>
+  Math.hypot(x - BE_WALL.x, z - BE_WALL.z) < BE_WALL.r && (x - BE_WALL.doorX) * BE_WALL.fx + (z - BE_WALL.doorZ) * BE_WALL.fz > 9.5;
 
 export const VILLAGE = { x: -16, z: -65, r: 150 };
 
 export const LANDMARKS = {
   bagEnd: { x: beX, z: beZ },
   bagEndOak: { x: oakX, z: oakZ },
+  backHill: BACK_HILL,
   partyTree: { x: ptX, z: ptZ },
   // The Party Field: the mown lawn between Bagshot Row and the Party Tree (about 55 × 60 m).
   partyField: { x: 8, z: -72, rx: 30, rz: 28, rot: 0.3 },
-  // Start on the lake path below the Party Tree, looking up at Bag End.
-  spawn: { x: 52, z: -36, yaw: 1.05 },
+  // Start on the lake path east of the Party Tree, looking up the lane to Bag End as on film.
+  spawn: { x: 59, z: -50, yaw: Math.atan2(59 - beX, -50 - beZ) },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -128,6 +153,18 @@ function sculpt(x, z, h) {
   // Centered a few meters behind the oak (away from Bag End), so the house sits on its flank.
   const kd = Math.hypot(x - (oakX + (oakX - beX) * 0.35), z - (oakZ + (oakZ - beZ) * 0.35));
   h += 6 * Math.exp(-((kd / 24) ** 2));
+  // The two grassy banks framing the lane at the foot of the view.
+  {
+    const dx = VISTA.bx - VISTA.ax, dz = VISTA.bz - VISTA.az, l = Math.hypot(dx, dz), ux = dx / l, uz = dz / l;
+    for (const sd of [-1, 1]) {
+      const cx = VISTA.ax + ux * 11 - uz * sd * 8.5, cz = VISTA.az + uz * 11 + ux * sd * 8.5;
+      const a = (x - cx) * ux + (z - cz) * uz, b = (x - cx) * -uz + (z - cz) * ux;
+      h += 2.6 * Math.exp(-((a / 9) ** 2) - ((b / 4.2) ** 2));
+    }
+  }
+  // The rounded hill beyond Bag End.
+  const hd = Math.hypot(x - BACK_HILL.x, z - BACK_HILL.z);
+  h += BACK_HILL.h * Math.exp(-((hd / BACK_HILL.r) ** 2));
   return h;
 }
 
@@ -530,12 +567,19 @@ function baseHeight(x, z) {
     // Each lane is level at its profile height; the land meets it in a bank whose width grows with
     // the height difference, cut above and built up below. The second-nearest lane is applied
     // first, so where two lanes' banks meet they blend rather than step.
+    const hNat = h;
     for (const L of [lane.second, lane]) {
       if (!L) continue;
       const surf = L.y - 0.1;
       // (capped so the bank always finishes inside the baked field)
       const bank = Math.min(0.6 + Math.abs(h - surf) * 2.1, 26);
       h = lerp(surf, h, smoothstep(0, bank, Math.max(L.edge, 0)));
+    }
+    // Below Bag End the lane is held up by a dry-stone wall: the ground drops right at its edge.
+    const surf = lane.y - 0.1;
+    if (lane.edge > 0.2 && hNat < surf - 0.15 && bagEndWallZone(x, z)) {
+      const foot = Math.min(hNat, surf - 1.5);
+      h = Math.min(h, lerp(foot, hNat, smoothstep(0.2, 6, lane.edge)));
     }
   }
   // Streams run in small valleys: a channel, then gentle banks rising away from it.
@@ -752,7 +796,7 @@ function nearestOnLanes(x, z, lanes) {
     // The mapped point is the building; the front door sits 7 m further into the knoll, leaving room
     // for the garden terrace, the retaining wall and the steps down to the gate.
     const back = 7;
-    HOLES.push(makeHole(rand, beX - fx * back, beZ - fz * back, fx, fz, laneY + 0.6, l + back - 1.3, {
+    HOLES.push(makeHole(rand, beX - fx * back, beZ - fz * back, fx, fz, laneY + 1.9, l + back - 1.3, {
       bagEnd: true, name: 'Bag End', doorColor: 0x2b7352, knob: 'center', plaster: 0xe0b656, frame: 0x2f6b3a, arch: 'brick',
       windowStyle: 'grid', doorR: 1.02, lit: true, fence: 'wattle',
       // Segments of the facade set around the curve of the dome, left to right as seen from the
@@ -839,13 +883,15 @@ function nearestOnLanes(x, z, lanes) {
   cands.sort((a, b) => b.score - a.score);
   for (const c of cands) {
     if (HOLES.length >= HOLE_COUNT) break;
-    if (tooClose(c.x, c.z, 10.5)) continue;
+    if (tooClose(c.x, c.z, 10)) continue;
     // The slope below Bag End is its garden: no neighbours in front of it.
     {
       const be = HOLES[0], dx = c.x - be.x, dz = c.z - be.z;
       if (Math.hypot(dx, dz) < 34 && dx * be.fx + dz * be.fz > -6) continue;
     }
     if (Math.abs(c.x) > 270 || Math.abs(c.z) > 270) continue;
+    // Clear of the view up the village to Bag End.
+    { const v = vistaDist(c.x, c.z); if ((v.d < 9 + v.t * 0.04 && v.t < 118) || Math.hypot(c.x - VISTA.ax, c.z - VISTA.az) < 26) continue; }
     // Clear of the Green Dragon, its outbuilding and the Mill, mound and all.
     if ([GREEN_DRAGON.poly, GREEN_DRAGON.shed, building("Sandyman's Mill").poly].some((p) => polyDistSimple(p, c.x, c.z) < 22)) continue;
     if (lakeFactor(c.x, c.z) > 0 || lakeDist(c.x, c.z) < 8 || pondDist(c.x, c.z) < 9) continue;
@@ -930,7 +976,10 @@ export function heightAt(x, z) {
   if (lane && lane.edge < 12 && lane.id >= 0 && lane.id < LANES.length) {
     const surf = lane.y - 0.1;
     const bank = Math.min(0.5 + Math.abs(h - surf) * 1.3, 12);
+    const pre = h;
     h = lerp(surf, h, smoothstep(0, bank, Math.max(lane.edge, 0)));
+    // (Bag End's lane wall, again: a drop, not a bank.)
+    if (lane.edge > 0.2 && pre < surf - 0.15 && bagEndWallZone(x, z)) h = Math.min(h, lerp(Math.min(pre, surf - 1.5), pre, smoothstep(0.2, 6, lane.edge)));
   }
   // ...and the hobbit holes' turf mounds are raised last, so they're always whole.
   for (const hole of near) if (!hole.arc) h = holeMound(hole, x - hole.x, z - hole.z, h);

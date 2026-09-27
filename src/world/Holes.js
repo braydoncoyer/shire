@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { Builder, mtx, box, cylinder, lantern } from './Kit.js';
 import { buildFacade } from './HoleModel.js';
-import { HOLES, heightAt, laneMask, LANES } from './Layout.js';
+import { HOLES, heightAt, laneMask, LANES, bagEndWallZone } from './Layout.js';
 import { mulberry32 } from '../util/noise.js';
 
 const TIMBER = 0x5c4330, WEATHERED = 0x7d6e5a, WILLOW = 0x8a7550;
@@ -259,6 +259,37 @@ export class HobbitHoles {
         const q = arcW(v + (rand() - 0.5) * 0.25, T + 0.25 + (rand() - 0.5) * 0.06);
         const g = new THREE.IcosahedronGeometry(0.5, 0);
         B.add('rock', g, mtx(q.x, y + h / 2, q.z, (rand() - 0.5) * 0.2, q.yaw + (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.2, w, h * 1.3, 0.4), tint);
+      }
+    }
+
+    // The dry-stone wall that holds up the lane below the garden, as on film: flat fieldstones in
+    // rough courses on the downhill side, from the ground to a little above the lane.
+    for (const lane of LANES) {
+      const w = lane.width / 2;
+      for (let i = 0; i < lane.pts.length - 1; i++) {
+        const [ax, az] = lane.pts[i], [bx, bz] = lane.pts[i + 1];
+        const len = Math.hypot(bx - ax, bz - az);
+        if (len < 0.01) continue;
+        const tx = (bx - ax) / len, tz = (bz - az) / len;
+        for (let t = 0; t < len; t += 0.45) {
+          const cx = ax + tx * t, cz = az + tz * t;
+          if (!bagEndWallZone(cx, cz)) continue;
+          const top = heightAt(cx, cz) + 0.28;
+          for (const sd of [-1, 1]) {
+            const ox = -tz * sd, oz = tx * sd;
+            const px = cx + ox * (w + 0.25), pz = cz + oz * (w + 0.25);
+            const foot = heightAt(cx + ox * (w + 0.55), cz + oz * (w + 0.55));
+            if (foot > top - 0.7 || laneMask(px + ox * 0.6, pz + oz * 0.6) > 0.3) continue;
+            const yaw = Math.atan2(-tz, tx);
+            for (let y = foot - 0.2; y < top; y += 0.15) {
+              const sw = 0.35 + rand() * 0.4, sh = 0.12 + rand() * 0.08;
+              const tint = [0x7a7362, 0x8a806c, 0x6a6556, 0x958b76, 0x5f5a4c][Math.floor(rand() * 5)];
+              const j = (rand() - 0.5) * 0.2;
+              B.add('rock', box(1, 1, 1), mtx(px + tx * j, Math.min(y + sh / 2, top - sh / 2), pz + tz * j, (rand() - 0.5) * 0.08, yaw + (rand() - 0.5) * 0.12, (rand() - 0.5) * 0.12, sw, sh * 0.9, 0.36 + rand() * 0.1), tint);
+            }
+            this.colliders.push({ x: px, z: pz, r: 0.3 });
+          }
+        }
       }
     }
 
