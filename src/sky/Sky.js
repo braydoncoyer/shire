@@ -19,6 +19,7 @@ import {
   MIE_G, OZONE_ABSORB, SUN_ILLUMINANCE, MS_FACTOR, HAZE_H, HAZE_SCALE,
 } from './Atmosphere.js';
 import { makeWeatherTexture, makeCloudDetailTexture } from '../util/textures.js';
+import { weatherU } from './Weather.js';
 
 const LUT_W = 192, LUT_H = 108;
 const _m = new THREE.Matrix4();
@@ -187,7 +188,8 @@ export class Sky {
     const w = texture(this.weatherTex, p.xz.add(u.windOffset).div(17000));
     const w2 = texture(this.weatherTex, p.xz.add(u.windOffset.mul(1.25)).div(5600).add(vec2(0.31, 0.17)));
     const base = w.r.mul(0.85).add(w2.g.sub(0.5).mul(0.2));
-    const cov = u.cloudCover;
+    // Past 85% cover the gaps close over into a solid grey deck (overcast and rain).
+    const cov = u.cloudCover.add(smoothstep(0.85, 1, u.cloudCover).mul(0.4));
     const shape = saturate(base.sub(float(1).sub(cov)).div(0.32));
     const bottom = smoothstep(0.0, 0.14, hf);
     // Flat bases, rounded tops whose height grows with the cloud's core.
@@ -391,7 +393,16 @@ export class Sky {
       const T = exp(odR.add(vec3(odH)).negate());
       const hdir = normalize(vec3(d.x, max(d.y, 0.035), d.z));
       const fogCol = this.sampleSky(hdir).add(vec3(0.0012, 0.002, 0.0045).mul(u.night));
-      return vec4(mix(fogCol, output.rgb, T), output.a);
+      const hazed = mix(fogCol, output.rgb, T);
+      // Ground mist (dawn, after rain): a thin layer a few meters deep over the valley floor and the
+      // lake, pale grey, lit like the sky around it.
+      const Hm = float(7);
+      const km = d.y.mul(dist).div(Hm);
+      const integM = select(abs(km).greaterThan(1e-3), float(1).sub(exp(km.negate())).div(km), float(1));
+      const odM = weatherU.mist.mul(0.02).mul(exp(max(cameraPosition.y.sub(1), 0).negate().div(Hm))).mul(dist).mul(integM);
+      const lum = dot(fogCol, vec3(0.2126, 0.7152, 0.0722));
+      const mistCol = mix(fogCol, vec3(lum).mul(1.15), 0.6);
+      return vec4(mix(mistCol, hazed, exp(odM.negate())), output.a);
     })();
   }
 

@@ -29,11 +29,12 @@ const SECTIONS = [
   {
     title: 'Time and weather',
     controls: [
-      { key: 'time', label: 'Time of day', kind: 'range', min: 0, max: 23.95, step: 0.05, fmt: clock },
-      { key: 'timeSpeed', label: 'Time passing', kind: 'select', options: [[0, 'Stopped'], [1, 'Slowly'], [10, 'Steadily'], [60, 'Quickly']] },
-      { key: 'clouds', label: 'Cloud cover', kind: 'range', min: 0, max: 1, step: 0.01, fmt: pct },
-      { key: 'haze', label: 'Haze', kind: 'range', min: 0, max: 1, step: 0.01, fmt: pct },
-      { key: 'windSpeed', label: 'Wind', kind: 'range', min: 0, max: 12, step: 0.5, fmt: (v) => `${v} m/s` },
+      { key: 'time', label: 'Time of day', kind: 'range', min: 0, max: 23.95, step: 0.05, fmt: clock, live: true },
+      { key: 'timeSpeed', label: 'Length of a day', kind: 'select', options: [[0, 'Time stands still'], [24, '1 minute'], [8, '3 minutes'], [2.4, '10 minutes'], [0.8, '30 minutes'], [1 / 60, '24 hours (real time)']] },
+      { key: 'weather', label: 'Weather', kind: 'select', options: [['changing', 'Changing'], ['clear', 'Clear'], ['fair', 'Fair'], ['cloudy', 'Cloudy'], ['overcast', 'Overcast'], ['rain', 'Rain'], ['custom', 'Set by hand']] },
+      { key: 'clouds', label: 'Cloud cover', kind: 'range', min: 0, max: 1, step: 0.01, fmt: pct, live: true, sky: true },
+      { key: 'haze', label: 'Haze', kind: 'range', min: 0, max: 1, step: 0.01, fmt: pct, live: true, sky: true },
+      { key: 'windSpeed', label: 'Wind', kind: 'range', min: 0, max: 12, step: 0.5, fmt: (v) => `${v.toFixed(1)} m/s`, live: true, sky: true },
     ],
   },
   {
@@ -136,6 +137,7 @@ export class Panel {
     const s = this.app.settings;
     s[c.key] = v;
     if (WEATHER.has(c.key)) this.app.sky.resetHistory();
+    if (c.sky) s.weather = 'custom';
     const quality = QUALITY_KEYS.includes(c.key);
     if (quality) s.preset = s.matchingPreset();
     this._changed(quality || ['fov', 'sensitivity', 'invertY'].includes(c.key));
@@ -165,10 +167,24 @@ export class Panel {
       : { low: 'For integrated graphics and older laptops.', medium: 'A balance for most laptops.', high: 'The intended look, for recent machines.', ultra: 'Sharper shadows and more detail at a distance. Needs a strong GPU.' }[preset];
   }
 
+  /** While open, keep the sliders that change by themselves (time, the weather) up to date. */
+  update(dt) {
+    if (!this.isOpen) return;
+    this.liveTimer = (this.liveTimer || 0) - dt;
+    if (this.liveTimer > 0) return;
+    this.liveTimer = 0.25;
+    const s = this.app.settings;
+    for (const { c, input, out } of this.inputs.values()) {
+      if (!c.live || document.activeElement === input) continue;
+      input.value = String(s[c.key]);
+      out.textContent = c.fmt(s[c.key]);
+    }
+  }
+
   reset() {
     const s = this.app.settings;
     s.setPreset('high');
-    Object.assign(s, { fov: 62, sensitivity: 1, invertY: false, showFps: false, volume: 0.7, muted: false });
+    Object.assign(s, { fov: 62, sensitivity: 1, invertY: false, showFps: false, volume: 0.7, muted: false, timeSpeed: 8, weather: 'changing' });
     this._changed(true);
   }
 

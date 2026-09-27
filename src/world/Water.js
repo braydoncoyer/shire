@@ -10,8 +10,9 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, texture, uniform, positionWorld, cameraPosition, vec2, vec3, vec4, float,
-  normalize, reflect, dot, max, pow, saturate, smoothstep, exp, reflector, uv,
+  normalize, reflect, dot, max, pow, saturate, smoothstep, exp, reflector, uv, floor, fract, hash, step, length, sin,
 } from 'three/tsl';
+import { weatherU } from '../sky/Weather.js';
 import { LAYERS } from '../core/Layers.js';
 import { WATER_Y, STREAMS, LAKE_SDF, POND_SDF, POND_Y, streamWaterAt } from './Layout.js';
 
@@ -96,7 +97,29 @@ export class Water {
     const e = 0.08;
     const h0 = h(p), hx = h(p.add(vec2(e, 0))), hz = h(p.add(vec2(0, e)));
     const amp = this.windStrength.mul(0.7).add(0.25).mul(flowing ? 1.6 : 1);
-    return normalize(vec3(h0.sub(hx).mul(amp).div(e).mul(0.08), 1, h0.sub(hz).mul(amp).div(e).mul(0.08)));
+    const ring = this._rainRings(positionWorld.xz);
+    return normalize(vec3(h0.sub(hx).mul(amp).div(e).mul(0.08).add(ring.x), 1, h0.sub(hz).mul(amp).div(e).mul(0.08).add(ring.y)));
+  }
+
+  /** Rings spreading from raindrops: the slope they add to the surface at world xz. */
+  _rainRings(q) {
+    const t = this.time, rain = weatherU.rain;
+    let slope = vec2(0);
+    for (const [cell, k] of [[0.55, 0], [0.37, 5000]]) {
+      const c = floor(q.div(cell));
+      const f = fract(q.div(cell));
+      const id = c.x.add(4096).mul(8191).add(c.y.add(4096)).add(k);
+      const r1 = hash(id), r2 = hash(id.add(1)), r3 = hash(id.add(2));
+      // Each cell gets a drop now and then (more in heavier rain); its ring grows and fades.
+      const life = fract(t.mul(r3.mul(0.5).add(0.9)).add(r1));
+      const on = step(r1, rain.mul(0.9));
+      const rel = f.sub(vec2(r2, r3).mul(0.5).add(0.25)).mul(cell);
+      const d = length(rel);
+      const x = d.sub(life.mul(cell * 0.45));
+      const wave = sin(x.mul(70)).mul(exp(x.mul(x).mul(-900)));
+      slope = slope.add(rel.div(max(d, 1e-3)).mul(wave).mul(float(1).sub(life)).mul(on));
+    }
+    return slope.mul(0.5);
   }
 
   _material({ reflection, flow }) {

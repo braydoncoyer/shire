@@ -1,5 +1,5 @@
 // Ambient sound, synthesized with Web Audio (no recordings are downloaded, like everything else
-// here). Wind in the grass and leaves, birdsong by day with a dawn chorus, crickets and the odd owl
+// here). Rain, wind in the grass and leaves, birdsong by day with a dawn chorus, crickets and the odd owl
 // at night, lapping water by the lake, the stream and the mill wheel, the fire in the Green
 // Dragon's hearth, and footsteps that change with the ground underfoot. Outdoor sounds pass through
 // a filter that muffles them indoors.
@@ -7,6 +7,7 @@
 // Browsers only allow sound after a click, so the audio graph is built on the first click (resume).
 
 import { lakeDist, streamMask, laneMask, surfaceAt, BRIDGE } from '../world/Layout.js';
+import { weatherU } from '../sky/Weather.js';
 
 const smooth = (a, b, x) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -117,6 +118,12 @@ export class Ambience {
     this._loop(this.brown, this._filter('lowpass', 220), this.fire).connect(this.master);
     this.crackleBus = this._gain(0);
     this.crackleBus.connect(this.master);
+
+    // Rain: a broad hiss outside, and a low drumming on the roof that carries indoors.
+    this.rainHiss = this._gain(0);
+    this._loop(this.white, this._filter('highpass', 900), this._filter('lowpass', 7500), this.rainHiss).connect(this.outdoor);
+    this.rainRoof = this._gain(0);
+    this._loop(this.brown, this._filter('lowpass', 420), this.rainRoof).connect(this.master);
 
     this.birdBus = this._gain(0.9);
     this.birdBus.connect(this.outdoor);
@@ -320,10 +327,18 @@ export class Ambience {
       this._burst(t + rand(0, 0.05), { dest: this.crackleBus, type: 'highpass', f: pop ? 800 : 2200, Q: 0.5, dur: pop ? 0.05 : rand(0.005, 0.02), gain: pop ? 0.25 : rand(0.05, 0.14), pan: rand(-0.4, 0.4) });
     }
 
+    // Rain, with drops pattering close by.
+    const rain = weatherU.rain.value;
+    set(this.rainHiss.gain, 0.09 * rain, 0.8);
+    set(this.rainRoof.gain, 0.25 * rain * indoor, 0.5);
+    if (Math.random() < dt * 40 * rain) {
+      this._burst(t + rand(0, 0.03), { dest: this.outdoor, f: rand(2500, 6000), Q: 2, dur: rand(0.008, 0.02), gain: rand(0.02, 0.08) * rain, pan: rand(-0.9, 0.9) });
+    }
+
     // Birdsong by day, busiest at dawn and in the evening, quieter under heavy cloud.
     const morning = s.time < 12 ? 1 : 0;
     const chorus = 1 + 2.5 * morning * (1 - smooth(0.05, 0.3, sunY)) * smooth(-0.08, 0, sunY);
-    const birdRate = day * chorus * 0.9 * (1 - s.clouds * 0.5) * (1 - smooth(8, 25, s.windSpeed));
+    const birdRate = day * chorus * 0.9 * (1 - s.clouds * 0.5) * (1 - smooth(8, 25, s.windSpeed)) * (1 - smooth(0.1, 0.4, rain));
     this.nextBird -= dt * birdRate;
     if (this.nextBird <= 0 && indoor < 0.5) {
       this._bird(t + 0.05);
@@ -331,7 +346,7 @@ export class Ambience {
     }
 
     // Crickets and the occasional owl after dark.
-    set(this.nightBus.gain, night * (1 - smooth(6, 12, s.windSpeed) * 0.6), 1);
+    set(this.nightBus.gain, night * (1 - smooth(6, 12, s.windSpeed) * 0.6) * (1 - smooth(0.1, 0.5, rain)), 1);
     if (night > 0.05) {
       for (const c of this.crickets) {
         c.next -= dt;

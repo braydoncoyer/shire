@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { CSMShadowNode } from 'three/addons/csm/CSMShadowNode.js';
 import { LAYERS } from '../core/Layers.js';
+import { weatherU } from './Weather.js';
 import { evaluateLighting, luminance } from './Atmosphere.js';
 import { sunDirection, moonDirection } from './SunPosition.js';
 
@@ -63,7 +64,8 @@ export class Lighting {
     const night = THREE.MathUtils.smoothstep(-sunY, 0.02, 0.2);
     // Clouds dim the direct sun a little overall and lift the diffuse light.
     const overcast = THREE.MathUtils.smoothstep(s.clouds, 0.55, 1.0);
-    const sunDim = 1 - overcast * 0.75;
+    // Rain clouds put the sun out altogether.
+    const sunDim = (1 - overcast * 0.75) * (1 - weatherU.rain.value * 0.8);
 
     u.sunDir.value.set(...this.sun);
     u.sunColor.value.setRGB(...sunColor);

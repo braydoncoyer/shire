@@ -4,6 +4,7 @@
 
 import * as THREE from 'three/webgpu';
 import { chunk } from './Chunks.js';
+import { weatherU } from '../sky/Weather.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   Fn, uv, vec2, vec3, float, mix, smoothstep, fract, abs, sin, attribute, color, texture, positionWorld,
@@ -12,6 +13,13 @@ import {
 
 // ---------------------------------------------------------------------------------------------
 // Materials
+
+/** Outdoor materials darken in the rain, and hard ones (stone, paint, tile) take on a sheen. */
+export function wetten(m, gloss = 0.3) {
+  const wet = weatherU.wet;
+  m.colorNode = m.colorNode.mul(float(1).sub(wet.mul(0.28)));
+  m.roughnessNode = (m.roughnessNode ?? float(m.roughness)).mul(float(1).sub(wet.mul(gloss)));
+}
 
 export function makeMaterials(sky, noiseTex, lampLight) {
   const vcol = attribute('color', 'vec3');

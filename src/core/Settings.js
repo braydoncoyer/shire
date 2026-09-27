@@ -3,8 +3,9 @@
 // ?time=6.2&clouds=0.7&haze=0.8&cam=10,5,40,-2.6,0.05&fly&quality=low
 
 export const DEFAULTS = {
-  time: 17.9, // hours, local solar time
-  timeSpeed: 0, // in-game minutes per real second
+  time: 16.5, // hours, local solar time
+  timeSpeed: 8, // in-game minutes per real second: 8 makes a day pass in 3 minutes
+  weather: 'changing', // 'changing', a fixed kind of weather (sky/Weather.js), or 'custom'
   sunAzimuth: 0, // degrees added to the true solar azimuth
   clouds: 0.35,
   cloudDensity: 1,
@@ -35,10 +36,10 @@ export const PRESETS = {
 };
 export const QUALITY_KEYS = Object.keys(PRESETS.high);
 
-// What the panel remembers between visits (not the camera, and not time/weather, which reset to the
-// golden-hour default each visit).
-const SAVED = ['preset', ...QUALITY_KEYS, 'fov', 'sensitivity', 'invertY', 'showFps', 'volume', 'muted'];
-const STORE = 'shire.settings.v1';
+// What the panel remembers between visits (not the camera, the hour or the sky, which start each
+// visit on a fair afternoon).
+const SAVED = ['preset', ...QUALITY_KEYS, 'timeSpeed', 'weather', 'fov', 'sensitivity', 'invertY', 'showFps', 'volume', 'muted'];
+const STORE = 'shire.settings.v2';
 
 export class Settings {
   constructor() {
@@ -54,11 +55,20 @@ export class Settings {
     const map = { time: 'time', clouds: 'clouds', cirrus: 'cirrus', haze: 'haze', ev: 'exposure', az: 'sunAzimuth', speed: 'timeSpeed', fov: 'fov' };
     for (const [k, prop] of Object.entries(map)) if (q.has(k)) this[prop] = parseFloat(q.get(k));
     if (PRESETS[q.get('quality')]) this.setPreset(q.get('quality'));
+    if (q.has('weather')) this.weather = q.get('weather');
+    // Setting the sky by hand (or rain and mist, for shots) holds the weather still.
+    if (['clouds', 'cirrus', 'haze', 'rain', 'mist'].some((k) => q.has(k)) && !q.has('weather')) this.weather = 'custom';
+    if (q.has('rain')) this.rain = parseFloat(q.get('rain'));
+    if (q.has('mist')) this.mist = parseFloat(q.get('mist'));
     this.cam = q.has('cam') ? q.get('cam').split(',').map(parseFloat) : null;
     this.fly = q.has('fly');
     this.shot = q.has('shot'); // headless screenshot mode: no pointer-lock prompt, no audio
     // Headless shots keep the look they were tuned with, whatever this browser saved.
     if (this.shot && !q.has('quality')) { this.preset = 'high'; Object.assign(this, PRESETS.high); }
+    // ...and hold the hour and the sky still, unless asked otherwise.
+    if (this.shot && !q.has('speed')) this.timeSpeed = 0;
+    if (this.shot && !q.has('weather')) this.weather = 'custom';
+    if (this.shot && !q.has('time')) this.time = 17.9;
   }
 
   setPreset(name) {
@@ -74,7 +84,9 @@ export class Settings {
   save() {
     if (this.shot) return;
     try {
-      localStorage.setItem(STORE, JSON.stringify(Object.fromEntries(SAVED.map((k) => [k, this[k]]))));
+      const out = Object.fromEntries(SAVED.map((k) => [k, this[k]]));
+      if (out.weather === 'custom') out.weather = 'changing'; // a sky set by hand lasts one visit
+      localStorage.setItem(STORE, JSON.stringify(out));
     } catch {}
   }
 }

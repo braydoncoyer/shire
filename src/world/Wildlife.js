@@ -14,6 +14,10 @@ import {
 import { LAYERS } from '../core/Layers.js';
 import { WATER_Y, GREEN_DRAGON } from './Layout.js';
 import { cleanPoly } from './Kit.js';
+import { weatherU } from '../sky/Weather.js';
+
+// Everything takes shelter from the rain.
+const dry = () => float(1).sub(smoothstep(0.15, 0.45, weatherU.rain));
 
 /** Geometry of `n` items, each a copy of `verts` ([x, y, z, u, v]) and `tris`, with an 'id' attribute. */
 function items(n, verts, tris) {
@@ -83,6 +87,8 @@ export class Wildlife {
     const u = this.u, su = sky.u;
     const glow = varying(float(0), 'ffGlow');
     const m = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    // Fog would mix its color into every card, and additive cards would then show as squares.
+    m.fog = false;
     m.positionNode = Fn(() => {
       const id = attribute('id', 'float');
       const { xz, edge } = wrapped(id, BOX);
@@ -100,7 +106,7 @@ export class Wildlife {
       // After dusk only, not over water, faded in at the edge of the box and near the camera.
       const on = smoothstep(0.25, 0.7, su.night).mul(float(1).sub(smoothstep(0.75, 1.0, edge)))
         .mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.6, ground)).mul(smoothstep(0.6, 1.5, length(vec3(p.x, y, p.y).sub(cameraPosition))))
-        .mul(float(1).sub(inInn(p)));
+        .mul(float(1).sub(inInn(p))).mul(dry());
       glow.assign(flash.mul(on));
       const size = float(0.22);
       const c = attribute('position', 'vec3').xy;
@@ -161,7 +167,7 @@ export class Wildlife {
       const pick = rnd(id, 8);
       tint.assign(select(pick.lessThan(0.45), vec3(0.95, 0.95, 0.9), select(pick.lessThan(0.8), vec3(1.0, 0.85, 0.25), vec3(0.95, 0.5, 0.15))));
       const present = select(stray.or(settled), float(1), float(0)).mul(float(1).sub(inInn(p)));
-      vis.assign(present.mul(float(1).sub(su.night)).mul(float(1).sub(smoothstep(0.8, 1.0, edge))).mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.8, ground)));
+      vis.assign(present.mul(dry()).mul(float(1).sub(su.night)).mul(float(1).sub(smoothstep(0.8, 1.0, edge))).mul(smoothstep(WATER_Y + 0.2, WATER_Y + 0.8, ground)));
       return vec3(p.x, y, p.y).add(rot).add(vec3(0, select(vis.lessThan(0.5), float(-1e4), float(0)), 0));
     })();
     m.colorNode = Fn(() => {
@@ -211,7 +217,7 @@ export class Wildlife {
       const wing = vec3(side.mul(span).mul(cos(ang)), span.mul(sin(ang)), lp.z.mul(0.35).add(span.mul(0.25))).mul(0.7);
       const ch = cos(heading), sh = sin(heading);
       const rot = vec3(wing.x.mul(ch).add(wing.z.mul(sh)), wing.y, wing.z.mul(ch).sub(wing.x.mul(sh)));
-      vis.assign(float(1).sub(smoothstep(0.3, 0.7, su.night)));
+      vis.assign(float(1).sub(smoothstep(0.3, 0.7, su.night)).mul(dry()));
       return p.add(rot).add(vec3(0, select(vis.lessThan(0.5), float(-1e4), float(0)), 0));
     })();
     m.colorNode = Fn(() => {

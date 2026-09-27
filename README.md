@@ -33,11 +33,31 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 - **Graphics presets:** Low, Medium, High (the default) and Ultra. You can also adjust each setting
   on its own: render scale, sharpness on high-DPI screens, MSAA, shadow detail, how far the grass
   reaches, tree detail distance, sky and cloud resolution, and lake reflections.
-- **Time and weather:** time of day, how fast time passes, clouds, haze and wind.
+- **Time and weather:** time of day, the length of a day, the weather, clouds, haze and wind.
 - **View, controls and sound:** field of view, mouse sensitivity, invert Y, frame rate readout,
   volume and mute.
-- Graphics, view and sound settings are saved in the browser. Time and weather reset on each visit.
+- Graphics, view, sound, day length and weather mode are saved in the browser. Each visit starts on
+  a fair afternoon.
 - If frames run slowly, a one-time hint suggests a lighter preset.
+
+## Day and weather
+
+- **The day:** a full day passes in 3 minutes by default: sunset, a starlit night with fireflies,
+  dawn, then day again. The clock waits on the start screen until you first click in. Settings →
+  *Length of a day* can stop time or set 1, 3, 10 or 30 minutes, or real time.
+- **The weather:** it drifts between clear, fair, cloudy, overcast and rain. Each lasts a minute or
+  two and eases into the next. Mostly it's fine, as on film, and rain only comes out of overcast
+  skies.
+- **Rain:**
+  - Streaks fall around you.
+  - Rings spread on the lake and the streams.
+  - The ground, lanes and stone turn dark and glossy, then dry slowly afterwards.
+  - Butterflies, birds and fireflies take shelter.
+  - You hear the rain outside, and drumming on the roof inside the inn.
+- **Mist:** it lies in the low ground at dawn, thicker after rain and on still mornings.
+- *Weather* in Settings can fix one kind of weather, and moving the cloud, haze or wind slider sets
+  the sky by hand.
+- Photo mode stops the clock and holds the weather still.
 
 ## Photo mode
 
@@ -62,7 +82,10 @@ Outdoor sounds are muffled inside the inn.
 
 ## URL options
 
-`?time=19.2&clouds=0.5&cirrus=0.6&haze=0.4&ev=0.5&fov=70&quality=low&cam=x,y,z,yaw,pitch&fly`
+`?time=19.2&speed=8&weather=rain&clouds=0.5&cirrus=0.6&haze=0.4&rain=1&mist=0.8&ev=0.5&fov=70&quality=low&cam=x,y,z,yaw,pitch&fly`
+
+(`speed` is in-game minutes per real second. Headless shots (`?shot`) hold the time and the sky
+still unless you pass `speed` or `weather`.)
 
 ## Deploying
 
@@ -111,6 +134,7 @@ Attribution: map data © OpenStreetMap contributors (ODbL); elevation © LINZ (C
 | `src/sky/Atmosphere.js` | Rayleigh/Mie/ozone atmosphere (Hillaire 2020), evaluated on CPU and GPU |
 | `src/sky/Sky.js` | Sky-view LUT, raymarched cumulus + cirrus with temporal accumulation, stars, aerial perspective |
 | `src/sky/Lighting.js` | Sun/moon light with cascaded shadows, sky ambient, auto exposure |
+| `src/sky/Weather.js`, `Rain.js` | The changing weather (clouds, wind, rain, wetness, mist) and the rain streaks |
 | `src/post/Post.js` | Exposure, bloom, night grading, AgX tone mapping |
 | `src/player/Player.js` | First-person walker and free camera |
 | `src/audio/Ambience.js` | Synthesized ambient sound and footsteps |

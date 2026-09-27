@@ -21,6 +21,7 @@ import {
 import { WATER_Y, LANDMARKS, BRIDGE } from './Layout.js';
 import { LAYERS } from '../core/Layers.js';
 import { paddockNode } from './Farmland.js';
+import { weatherU } from '../sky/Weather.js';
 
 const PF = LANDMARKS.partyField;
 
@@ -355,7 +356,8 @@ export class Grass {
 
     mat.colorNode = Fn(() => {
       const ao = mix(float(L.rootShade), float(1.0), smoothstep(0.0, 0.7, tipV));
-      return colV.mul(ao).mul(mix(float(0.85), float(1.12), tipV));
+      // Wet grass reads a deeper green.
+      return colV.mul(ao).mul(mix(float(0.85), float(1.12), tipV)).mul(float(1).sub(weatherU.wet.mul(0.16)));
     })();
     mat.normalNode = cameraViewMatrix.mul(vec4(nV, 0)).xyz.normalize();
     mat.emissiveNode = this._backlight(colV, tipV, 0.05);

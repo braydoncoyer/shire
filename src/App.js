@@ -8,7 +8,7 @@ import { Water } from './world/Water.js';
 import { GroundMaps } from './world/GroundMaps.js';
 import { Grass } from './world/Grass.js';
 import { Vegetation } from './world/Vegetation.js';
-import { makeMaterials } from './world/Kit.js';
+import { makeMaterials, wetten } from './world/Kit.js';
 import { HobbitHoles } from './world/Holes.js';
 import { Buildings } from './world/Buildings.js';
 import { GreenDragon } from './world/GreenDragon.js';
@@ -20,6 +20,8 @@ import { Hud } from './ui/Hud.js';
 import { Panel } from './ui/Panel.js';
 import { PhotoMode } from './ui/PhotoMode.js';
 import { Ambience } from './audio/Ambience.js';
+import { Weather } from './sky/Weather.js';
+import { Rain } from './sky/Rain.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
 import { Smoke } from './world/Smoke.js';
@@ -63,6 +65,7 @@ export class App {
     scene.backgroundNode = this.sky.backgroundNode;
     scene.fogNode = this.sky.fogNode;
     this.lighting = new Lighting(scene, this.sky, this.settings);
+    this.weather = new Weather(this.settings);
     this.lampLight = new LampLight(this.sky);
 
     progress('Raising the Hill');
@@ -101,6 +104,9 @@ export class App {
     scene.add(this.buildings.group);
     this.surroundings = new Surroundings(this.mats);
     scene.add(this.surroundings.group);
+    // Outdoor materials darken and shine in the rain (the inn's interior has its own copies).
+    const gloss = { stone: 0.35, masonry: 0.35, rock: 0.35, paint: 0.45, brick: 0.3, roof: 0.4, wood: 0.2, plaster: 0.2, metal: 0.2, hide: 0.1, thatch: 0, turf: 0, cloth: 0 };
+    for (const [k, g] of Object.entries(gloss)) if (this.mats[k]) wetten(this.mats[k], g);
     // Every chimney can smoke; each gets a rank and Smoke lights the lowest ranked (the inn's hearth
     // and Bag End always).
     const chimneys = [this.greenDragon.chimneys[0], this.holes.chimneys[0]].map((c) => Object.assign(c.clone(), { rank: 0 }));
@@ -112,6 +118,8 @@ export class App {
     scene.add(this.smoke.mesh);
     this.wildlife = new Wildlife(this.maps, this.sky);
     scene.add(this.wildlife.group);
+    this.rain = new Rain(this.sky);
+    scene.add(this.rain.mesh);
     this.lampLight.bake([...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps, ...this.surroundings.lamps], this.terrain.heights);
     // Alpha-tested meshes (leaves, thatch fringe) draw after the opaque ones, which also lets the
     // GPU's hidden-surface removal cull more of what's behind them.
@@ -239,7 +247,10 @@ export class App {
     this.clock.update();
     const dt = Math.min(this.clock.getDelta(), 0.1);
     const s = this.settings;
-    s.time = (s.time + (s.timeSpeed * dt) / 60 + 24) % 24;
+    // The day turns (not while the start screen waits for the first click).
+    if (this.hud.started || s.shot) s.time = (s.time + (s.timeSpeed * dt) / 60 + 24) % 24;
+    this.weather.sunY = this.lighting.sun[1];
+    this.weather.update(this.photo.active ? 0 : dt); // the sky holds still while you compose
     this.hud.handleKeys(this.input);
 
     this.player.update(dt);
@@ -251,6 +262,7 @@ export class App {
     this.lampLight.update(dt);
     this.smoke.update(dt, s);
     this.wildlife.update(dt);
+    this.rain.update(dt, this.camera, s, this.lighting.indoor);
     this.greenDragon.interior.update(dt);
     // Eyes adjust indoors: inside the common room, exposure moves toward the room's own level.
     const inside = this.greenDragon.interior.inside(this.camera.position.x, this.camera.position.z) && this.camera.position.y < this.greenDragon.interior.y + 2.6;
@@ -260,6 +272,7 @@ export class App {
     this.post.indoor.value = this.lighting.indoorMix;
     this.post.bloomStrength.value = s.bloom;
     this.photo.update(dt);
+    this.panel.update(dt);
     this.audio.update(dt);
 
     this.sky.render(this.camera);

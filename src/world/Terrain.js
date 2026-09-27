@@ -8,6 +8,7 @@ import {
 } from 'three/tsl';
 import { heightAt, INNER_HALF, WORLD_HALF, WATER_Y } from './Layout.js';
 import { LAYERS } from '../core/Layers.js';
+import { weatherU } from '../sky/Weather.js';
 import { paddockNode, furrowNode } from './Farmland.js';
 import { makeGroundNoiseTexture, makeLaneTexture, makeWaterTexture } from '../util/textures.js';
 
@@ -197,6 +198,8 @@ export function makeTerrainMaterial(groundNoise, laneTex, waterTex, lampLight) {
     const wd = texture(waterTex, wp.add(280).div(560)).r.sub(0.5).mul(60);
     const shore = float(1).sub(smoothstep(-0.5, 1.2, wd)).mul(inInner).mul(float(1).sub(smoothstep(WATER_Y + 0.2, WATER_Y + 0.9, positionWorld.y)));
     col.assign(mix(col, mud, shore.mul(0.85)));
+    // Rain darkens the ground, the lanes most (wet gravel and mud).
+    col.mulAssign(float(1).sub(weatherU.wet.mul(mix(float(0.14), float(0.4), max(lane, bed)))));
     return col;
   })();
 
