@@ -22,6 +22,9 @@ const VARIANTS = { oak: 4, poplar: 2, willow: 3, pine: 1, partyPine: 1, bagEndOa
 const LOD_DIST = [90, 300];
 const TREE_SEED = attribute('treeSeed', 'float');
 
+/** The seed each species' variant `v` is grown from (so others can find its branches). */
+export const variantSeed = (species, v) => 1000 + v * 37 + species.length * 101;
+
 /** Places that must stay clear of trees: lanes, water, gardens, buildings, the Party Field. */
 function blocked(x, z, pad = 0) {
   if (Math.abs(x) < 279 && Math.abs(z) < 279) {
@@ -194,7 +197,7 @@ export class Vegetation {
       for (let v = 0; v < count; v++) {
         const list = this.trees.filter((t) => t.species === species && t.variant === v);
         if (!list.length) continue;
-        const model = buildTree(species, 1000 + v * 37 + species.length * 101);
+        const model = buildTree(species, variantSeed(species, v));
         const woodMat = this._woodMaterial(), leafMat = this._leafMaterial(species);
         for (const t of list) {
           if (Math.hypot(t.x, t.z) < WALK_RADIUS + 10) this.colliders.push({ x: t.x, z: t.z, r: model.trunkRadius * t.scale + 0.15 });

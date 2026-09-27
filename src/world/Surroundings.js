@@ -3,7 +3,7 @@
 // produce on the lawn beside the lane, and sheep, cows and horses grazing the paddocks beyond.
 
 import * as THREE from 'three/webgpu';
-import { Builder, mtx, box, cylinder, footprintRoof, archLeaf, arcTimber, lantern } from './Kit.js';
+import { Builder, mtx, box, cylinder, footprintRoof, archLeaf, arcTimber, lantern, barrel, cart } from './Kit.js';
 import { heightAt, laneMask, lakeDist, GREEN_DRAGON, GEO } from './Layout.js';
 import { PORCH, HUT, STALLS } from './Sites.js';
 import { paddock, farmWeight } from './Farmland.js';
@@ -137,49 +137,19 @@ export class Surroundings {
    * two-wheeled cart, its shafts resting on the grass. Local x runs along the cart toward the shafts.
    */
   _aleCart(B) {
-    const cart = GEO.trees.find((t) => t.name && /Ale Cart/.test(t.name));
-    if (!cart) return;
-    const [x, z] = cart.p;
+    const site = GEO.trees.find((t) => t.name && /Ale Cart/.test(t.name));
+    if (!site) return;
+    const [x, z] = site.p;
     // Parallel to the road beside it.
     const yaw = Math.atan2(-(122 - 101), 6 - -49);
     const y = heightAt(x, z) - 0.03;
     const base = mtx(x, y, z, 0, yaw, 0);
     const at = (px, py, pz, rx, ry, rz) => base.clone().multiply(mtx(px, py, pz, rx, ry, rz));
-    const WOOD = 0x6e5238, IRON = 0x2a2622;
-    // Wheels: rim, spokes, hub, on an axle.
-    const R = 0.62;
-    for (const sz of [-0.86, 0.86]) {
-      B.add('wood', new THREE.TorusGeometry(R - 0.04, 0.05, 6, 24), at(-0.2, R, sz), WOOD);
-      B.add('metal', new THREE.TorusGeometry(R, 0.022, 4, 24), at(-0.2, R, sz), IRON);
-      for (let k = 0; k < 6; k++) B.add('wood', box(0.045, R * 2 - 0.1, 0.045), at(-0.2, R, sz, 0, 0, (k * Math.PI) / 6), WOOD);
-      B.add('wood', cylinder(0.09, 0.09, 0.2, 10), at(-0.2, R, sz, Math.PI / 2), 0x5a4230);
-    }
-    B.add('wood', cylinder(0.045, 0.045, 1.9, 8), at(-0.2, R, 0, Math.PI / 2), 0x3a2c20);
-    // Bed and side rails.
-    const bedY = R + 0.12;
-    B.add('wood', box(2.3, 0.07, 1.3), at(0, bedY, 0), 0x7a5c3e);
-    for (const sz of [-0.62, 0.62]) B.add('wood', box(2.3, 0.1, 0.08), at(0, bedY + 0.08, sz), WOOD);
-    // Shafts running forward and down to rest on the ground.
-    const sx0 = 1.0, sy0 = bedY - 0.04, sx1 = 3.1, sy1 = 0.06;
-    const len = Math.hypot(sx1 - sx0, sy0 - sy1), tilt = Math.atan2(sy0 - sy1, sx1 - sx0);
-    for (const sz of [-0.5, 0.5]) B.add('wood', box(len, 0.08, 0.08), at((sx0 + sx1) / 2, (sy0 + sy1) / 2, sz, 0, 0, -tilt), WOOD);
-    B.add('wood', box(0.08, 0.08, 1.0), at(2.2, 0.06 + (sy0 - sy1) * ((sx1 - 2.2) / (sx1 - sx0)), 0), WOOD);
-    // The barrel on two chocks: bellied staves, iron hoops, and a brass tap in the front end.
+    const bedY = cart(B, base);
+    // The barrel on two chocks, with a brass tap in the front end.
     const L = 1.75, BR = 0.58, barrelY = bedY + 0.04 + BR * 0.92;
     for (const cx of [-0.5, 0.5]) B.add('wood', box(0.16, 0.18, 0.9), at(cx, bedY + 0.1, 0), 0x5a4230);
-    const prof = [];
-    for (let i = 0; i <= 12; i++) {
-      const t = i / 12, yy = (t - 0.5) * L;
-      prof.push(new THREE.Vector2(BR * (1 - 0.13 * (2 * t - 1) ** 2), yy));
-    }
-    const staves = new THREE.LatheGeometry(prof, 20);
-    B.add('wood', staves, at(0, barrelY, 0, 0, 0, Math.PI / 2), 0x8a6440);
-    const endR = BR * 0.87;
-    for (const e of [-1, 1]) B.add('wood', cylinder(endR, endR, 0.02, 20), at(e * (L / 2 - 0.02), barrelY, 0, 0, 0, Math.PI / 2), 0x7a5634);
-    for (const t of [0.1, 0.3, 0.7, 0.9]) {
-      const r = BR * (1 - 0.13 * (2 * t - 1) ** 2) + 0.012;
-      B.add('metal', new THREE.TorusGeometry(r, 0.022, 4, 24), at((t - 0.5) * L, barrelY, 0, 0, Math.PI / 2, 0), IRON);
-    }
+    barrel(B, at(0, barrelY, 0), L, BR);
     B.add('metal', cylinder(0.03, 0.03, 0.14, 8), at(L / 2 + 0.05, barrelY - 0.3, 0, 0, 0, Math.PI / 2), 0xb08a3a);
     B.add('metal', cylinder(0.022, 0.022, 0.1, 8), at(L / 2 + 0.11, barrelY - 0.35, 0), 0xb08a3a);
     this.colliders.push({ x: x + Math.cos(yaw) * 0.8, z: z - Math.sin(yaw) * 0.8, hx: 2.2, hz: 0.95, rot: yaw });

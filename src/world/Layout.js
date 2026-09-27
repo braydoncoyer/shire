@@ -452,8 +452,30 @@ export const GREEN_DRAGON = (() => {
 }
 
 // Level pads for buildings, applied last in heightAt.
+// Bilbo's party on the Party Field, as in the film: the pavilion (on a level pad), the dance ring
+// round a lantern mast, the bandstand beside it, the birthday banner over the path in from Hill Lane,
+// and Gandalf's fireworks cart down by the lake. The pavilion runs along the path across the field.
+export const PARTY = (() => {
+  const ux = 0.511, uz = -0.859; // along the path from the lake up to Hill Lane
+  const pav = { x: -5, z: -80, ux, uz, hl: 8, hw: 4 };
+  pav.poly = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [pav.x + ux * a * pav.hl - uz * b * pav.hw, pav.z + uz * a * pav.hl + ux * b * pav.hw]);
+  let sum = 0, n = 0;
+  for (let a = -1; a <= 1; a += 0.25) for (let b = -1; b <= 1; b += 0.25) {
+    sum += naturalHeight(pav.x + ux * a * pav.hl - uz * b * pav.hw, pav.z + uz * a * pav.hl + ux * b * pav.hw); n++;
+  }
+  pav.y = sum / n;
+  return {
+    ux, uz, pavilion: pav,
+    dance: { x: 5, z: -70, r: 5.5 },
+    bandstand: { x: 9.1, z: -76.9 },
+    banner: { x: 16.6, z: -73.6 },
+    cart: { x: 34, z: -30 },
+  };
+})();
+
 const PADS = [
   { poly: building("Sandyman's Mill").poly, r0: 0.8, r1: 4, y: MILL.y },
+  { poly: PARTY.pavilion.poly, r0: 1.2, r1: 6, y: PARTY.pavilion.y },
   { poly: GREEN_DRAGON.poly, r0: 2.5, r1: 9, y: GREEN_DRAGON.y },
   { poly: GREEN_DRAGON.shed, r0: 1.5, r1: 5, y: GREEN_DRAGON.shedY },
 ].map((p) => {

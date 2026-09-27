@@ -207,7 +207,16 @@ export function makeMaterials(sky, noiseTex, lampLight) {
   const pane = new THREE.MeshStandardNodeMaterial({ roughness: 0.06, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
   pane.colorNode = vec3(0.1, 0.12, 0.1);
 
-  const mats = { stone, masonry, hide, cloth, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
+  // Paper lanterns: thin colored paper (the vertex tint) that glows from the candle inside after dusk.
+  const paper = new THREE.MeshStandardNodeMaterial({ roughness: 0.8, side: THREE.DoubleSide });
+  paper.colorNode = vcol.mul(0.85);
+  paper.emissiveNode = Fn(() => {
+    // Brightest across the middle of the lantern, where the flame sits.
+    const mid = float(1).sub(abs(uv().y.sub(0.5)).mul(1.2));
+    return vcol.mul(vcol).mul(vec3(1, 0.72, 0.42)).mul(smoothstep(0.05, 0.6, night)).mul(0.16).mul(mid).mul(flicker.mul(0.12).add(0.92));
+  })();
+
+  const mats = { stone, masonry, hide, cloth, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock, paper };
   // Lamplight after dark on every diffuse surface.
   if (lampLight)
     for (const m of [stone, masonry, hide, cloth, wood, paint, brick, roof, plaster, thatch, turf, fringe, straw, rock])
@@ -312,6 +321,46 @@ export function lantern(B, matrix, s = 0.2) {
   B.add('metal', new THREE.TorusGeometry(s * 0.18, s * 0.04, 4, 8), at(0, h / 2 + s * 0.58, 0), 0x2a2622);
   B.add('metal', box(s * 1.05, s * 0.12, s * 1.05), at(0, -h / 2 - s * 0.06, 0), 0x2a2622);
   for (const [x, z] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) B.add('metal', box(s * 0.09, h, s * 0.09), at((x * s * 0.46), 0, (z * s * 0.46)), 0x2a2622);
+}
+
+/**
+ * A barrel lying along local x, centered at `matrix`: bellied staves, end boards and iron hoops.
+ * `length` and `radius` in meters (radius at the belly).
+ */
+export function barrel(B, matrix, length = 1.2, radius = 0.4, tint = 0x8a6440) {
+  const at = (x, y, z, rx, ry, rz) => matrix.clone().multiply(mtx(x, y, z, rx, ry, rz));
+  const r = (t) => radius * (1 - 0.13 * (2 * t - 1) ** 2);
+  const prof = [];
+  for (let i = 0; i <= 12; i++) prof.push(new THREE.Vector2(r(i / 12), (i / 12 - 0.5) * length));
+  B.add('wood', new THREE.LatheGeometry(prof, 20), at(0, 0, 0, 0, 0, Math.PI / 2), tint);
+  for (const e of [-1, 1]) B.add('wood', cylinder(r(0) - 0.01, r(0) - 0.01, 0.02, 20), at(e * (length / 2 - 0.02), 0, 0, 0, 0, Math.PI / 2), 0x7a5634);
+  for (const t of [0.1, 0.3, 0.7, 0.9]) B.add('metal', new THREE.TorusGeometry(r(t) + 0.012, 0.022 * (radius / 0.58) + 0.006, 4, 24), at((t - 0.5) * length, 0, 0, 0, Math.PI / 2, 0), 0x2a2622);
+}
+
+/**
+ * A two-wheeled cart standing on the ground at `matrix` (local x toward the shafts, which rest on
+ * the grass). Returns the height of its bed.
+ */
+export function cart(B, matrix, { length = 2.3, width = 1.3, wheel = 0.62 } = {}) {
+  const at = (x, y, z, rx, ry, rz) => matrix.clone().multiply(mtx(x, y, z, rx, ry, rz));
+  const WOOD = 0x6e5238, IRON = 0x2a2622, R = wheel, hz = width / 2 + 0.21;
+  for (const sz of [-hz, hz]) {
+    B.add('wood', new THREE.TorusGeometry(R - 0.04, 0.05, 6, 24), at(-0.2, R, sz), WOOD);
+    B.add('metal', new THREE.TorusGeometry(R, 0.022, 4, 24), at(-0.2, R, sz), IRON);
+    for (let k = 0; k < 6; k++) B.add('wood', box(0.045, R * 2 - 0.1, 0.045), at(-0.2, R, sz, 0, 0, (k * Math.PI) / 6), WOOD);
+    B.add('wood', cylinder(0.09, 0.09, 0.2, 10), at(-0.2, R, sz, Math.PI / 2), 0x5a4230);
+  }
+  B.add('wood', cylinder(0.045, 0.045, hz * 2 + 0.2, 8), at(-0.2, R, 0, Math.PI / 2), 0x3a2c20);
+  const bedY = R + 0.12;
+  B.add('wood', box(length, 0.07, width), at(0, bedY, 0), 0x7a5c3e);
+  for (const sz of [-width / 2 + 0.03, width / 2 - 0.03]) B.add('wood', box(length, 0.1, 0.08), at(0, bedY + 0.08, sz), WOOD);
+  // Shafts running forward and down to rest on the ground, with a crossbar.
+  const sx0 = length / 2 - 0.15, sy0 = bedY - 0.04, sx1 = sx0 + 2.1, sy1 = 0.06;
+  const len = Math.hypot(sx1 - sx0, sy0 - sy1), tilt = Math.atan2(sy0 - sy1, sx1 - sx0);
+  for (const sz of [-0.5, 0.5]) B.add('wood', box(len, 0.08, 0.08), at((sx0 + sx1) / 2, (sy0 + sy1) / 2, sz, 0, 0, -tilt), WOOD);
+  const cx = sx0 + (sx1 - sx0) * 0.57;
+  B.add('wood', box(0.08, 0.08, 1.0), at(cx, sy0 + (sy1 - sy0) * 0.57, 0), WOOD);
+  return bedY;
 }
 
 /** Box with uvs in meters on each face (so stone/wood patterns keep their scale). */
