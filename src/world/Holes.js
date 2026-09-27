@@ -98,7 +98,7 @@ export class HobbitHoles {
     }
 
     // Fence and gate along the lane edge.
-    const fz = yard + 0.15;
+    const fz = hole.gateU ?? yard + 0.15;
     const style = hole.fence || (hole.bagEnd ? 'wattle' : ['wattle', 'rail', 'picket', 'rail'][Math.floor(rand() * 4)]);
     const gate = 0.7;
     // Bag End's front is open: only a short stretch of fence either side of its gate.
@@ -109,26 +109,28 @@ export class HobbitHoles {
       const mid = toWorld((a + b) / 2, fz);
       this.colliders.push({ x: mid.x, z: mid.z, hx: (b - a) / 2, hz: 0.1, rot: hole.yaw });
     }
+    // Bag End's gate stands to the right of the door; the steps climb up and left from it.
+    const gx = hole.gateX || 0;
     for (const s of [-1, 1]) {
-      B.add('wood', box(0.14, 1.15, 0.14), atG(s * gate, 0.57, fz), TIMBER);
-      B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), atG(s * gate, 1.2, fz), TIMBER);
+      B.add('wood', box(0.14, 1.15, 0.14), atG(gx + s * gate, 0.57, fz), TIMBER);
+      B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), atG(gx + s * gate, 1.2, fz), TIMBER);
     }
     // The gate, swung open.
     const swing = hole.bagEnd ? -0.35 : -1.25;
-    for (const y of [0.35, 0.85]) B.add('wood', box(gate * 1.9, 0.08, 0.05), atG(-gate, y, fz, 0, swing).multiply(mtx(gate * 0.95, 0, 0)), WEATHERED);
-    if (hole.bagEnd) for (let k = 0; k < 6; k++) B.add('wood', box(0.05, 0.8, 0.04), atG(-gate, 0.5, fz, 0, swing).multiply(mtx(0.12 + k * 0.24, 0, 0)), WEATHERED);
+    for (const y of [0.35, 0.85]) B.add('wood', box(gate * 1.9, 0.08, 0.05), atG(gx - gate, y, fz, 0, swing).multiply(mtx(gate * 0.95, 0, 0)), WEATHERED);
+    if (hole.bagEnd) for (let k = 0; k < 6; k++) B.add('wood', box(0.05, 0.8, 0.04), atG(gx - gate, 0.5, fz, 0, swing).multiply(mtx(0.12 + k * 0.24, 0, 0)), WEATHERED);
 
     // Letterbox: a hollowed log on a post, or a painted box.
-    const lbx = gate + 0.45;
+    const lbx = gx + gate + 0.45;
     B.add('wood', box(0.12, 1.0, 0.12), atG(lbx, 0.5, fz + 0.3), TIMBER);
     if (hole.bagEnd || rand() < 0.5) B.add('wood', cylinder(0.14, 0.14, 0.62, 10), atG(lbx, 1.1, fz + 0.3, 0, 0, Math.PI / 2), 0x7a5a3c);
     else B.add('paint', box(0.3, 0.24, 0.4), atG(lbx, 1.1, fz + 0.3), hole.doorColor);
     // Bag End's "No admittance except on party business" board, hung on the gate.
     if (hole.bagEnd) {
       // The sign hangs on the gate, which stands only slightly ajar.
-      this.signs.push(atG(-gate, 0.62, fz, 0, -0.35).multiply(mtx(gate * 0.95, 0, 0.05)));
+      this.signs.push(atG(gx - gate, 0.62, fz, 0, -0.35).multiply(mtx(gate * 0.95, 0, 0.05)));
       // The wattle fence runs on along the whole garden front, following the curve of the lane.
-      this._laneFence(B, hole, toWorld(0, fz), gate, rand);
+      this._laneFence(B, hole, toWorld(gx, fz), gate, rand);
     }
 
     if (hole.arc) this._bagEndGarden(B, hole, at, atG, arcW, rand);
@@ -213,11 +215,15 @@ export class HobbitHoles {
     // Stone steps from the terrace down to the gate, set into the slope.
     // Rough, uneven slabs, each laid as two or three stones, with grass creeping between them.
     const STEP = [0x857d6e, 0x9a907e, 0x7a7466, 0x8e8676];
-    for (let u = T + 0.3; u < hole.yard + 0.1; u += 0.48 + rand() * 0.08) {
-      let x = -0.55 + (rand() - 0.5) * 0.15;
-      while (x < 0.95) {
+    const gx = hole.gateX || 0, sx0 = 0.2, slant = Math.atan2(gx - sx0, (hole.gateU ?? hole.yard) - T);
+    const U = hole.gateU ?? hole.yard;
+    for (let u = T + 0.3; u < U - 0.1; u += 0.48 + rand() * 0.08) {
+      const cx = sx0 + ((u - T) / (U - T)) * (gx - sx0);
+      let x = -0.75 + (rand() - 0.5) * 0.15;
+      while (x < 0.75) {
         const w = 0.45 + rand() * 0.45;
-        B.add('rock', box(w - 0.04, 0.2, 0.5 + rand() * 0.12), atG(x + w / 2, -0.04 + rand() * 0.04, u + (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.06, (rand() - 0.5) * 0.25, (rand() - 0.5) * 0.06), STEP[Math.floor(rand() * STEP.length)]);
+        const px = cx + (x + w / 2) * Math.cos(slant), pu = u - (x + w / 2) * Math.sin(slant);
+        B.add('rock', box(w - 0.04, 0.2, 0.5 + rand() * 0.12), atG(px, -0.04 + rand() * 0.04, pu + (rand() - 0.5) * 0.08, (rand() - 0.5) * 0.06, slant + (rand() - 0.5) * 0.25, (rand() - 0.5) * 0.06), STEP[Math.floor(rand() * STEP.length)]);
         x += w;
       }
     }
@@ -246,19 +252,18 @@ export class HobbitHoles {
     }
 
     // The dry-stone retaining wall along the terrace edge, broken by the steps.
-    for (let v = -12.8; v < 8.8; v += 0.42) {
+    for (let v = -12.8; v < 8.8; v += 0.32) {
       if (Math.abs(v - 0.2) < 1.0) continue;
       const p = arcW(v, T + 0.25);
       const top = hole.y + 0.08;
       const foot = heightAt(p.x, p.z) - 0.15;
       if (foot > top - 0.2) continue;
       // Long, flat fieldstones laid in rough courses, from the ground below up to the terrace.
-      for (let y = Math.max(foot, hole.y - 1.6); y < top; y += 0.19) {
+      for (let y = Math.max(foot, hole.y - 1.6) - 0.1; y < top; y += 0.15) {
         const w = 0.4 + rand() * 0.45, h = 0.13 + rand() * 0.08;
         const tint = [0x7a7362, 0x8a806c, 0x6a6556, 0x958b76, 0x5f5a4c][Math.floor(rand() * 5)];
         const q = arcW(v + (rand() - 0.5) * 0.25, T + 0.25 + (rand() - 0.5) * 0.06);
-        const g = new THREE.IcosahedronGeometry(0.5, 0);
-        B.add('rock', g, mtx(q.x, y + h / 2, q.z, (rand() - 0.5) * 0.2, q.yaw + (rand() - 0.5) * 0.3, (rand() - 0.5) * 0.2, w, h * 1.3, 0.4), tint);
+        B.add('rock', box(1, 1, 1), mtx(q.x, Math.min(y + h / 2, top - h / 2), q.z, (rand() - 0.5) * 0.06, q.yaw + (rand() - 0.5) * 0.12, (rand() - 0.5) * 0.1, w, h * 0.9, 0.38), tint);
       }
     }
 
@@ -273,10 +278,14 @@ export class HobbitHoles {
         const tx = (bx - ax) / len, tz = (bz - az) / len;
         for (let t = 0; t < len; t += 0.45) {
           const cx = ax + tx * t, cz = az + tz * t;
-          if (!bagEndWallZone(cx, cz)) continue;
+          if (!bagEndWallZone(cx - tz * (w + 1), cz + tx * (w + 1)) && !bagEndWallZone(cx + tz * (w + 1), cz - tx * (w + 1))) continue;
+          const gU = hole.gateU ?? hole.yard, gX = hole.gateX || 0;
+          const nearGate = Math.hypot(cx - (hole.x + hole.fx * gU + hole.fz * gX), cz - (hole.z + hole.fz * gU - hole.fx * gX)) < 2.8;
           const top = heightAt(cx, cz) + 0.28;
           for (const sd of [-1, 1]) {
             const ox = -tz * sd, oz = tx * sd;
+            if (nearGate && ox * (hole.x - cx) + oz * (hole.z - cz) > 0) continue; // the garden side, at the gate
+            if (!bagEndWallZone(cx + ox * (w + 1), cz + oz * (w + 1))) continue;
             const px = cx + ox * (w + 0.25), pz = cz + oz * (w + 0.25);
             const foot = heightAt(cx + ox * (w + 0.55), cz + oz * (w + 0.55));
             if (foot > top - 0.7 || laneMask(px + ox * 0.6, pz + oz * 0.6) > 0.3) continue;

@@ -503,6 +503,12 @@ function resample(pts, step) {
     for (let i = 1; i < n; i++) {
       if (fixed[i] !== null) { prof[i] = fixed[i]; climbing = false; continue; }
       const gap = t[i] - prof[i - 1];
+      // Below Bag End the lane is a cart track: a steady ramp up along its wall, never steps.
+      if (Math.hypot(pts[i][0] - beX, pts[i][1] - beZ) < 42) {
+        climbing = false;
+        prof[i] = prof[i - 1] + clamp(gap, -0.15, 0.15);
+        continue;
+      }
       if (canStep && !climbing && rest <= 0 && Math.abs(gap) > STAIR_TRIGGER) { climbing = true; flight = 0; }
       if (climbing && ++flight > 12) { climbing = false; rest = 3; } // a landing after each flight
       rest--;
@@ -686,11 +692,11 @@ function bagEndCover(hole, u, v, hw) {
   const back = Math.max(-u, 0);
   const lat = Math.abs(v) / (hw + 14 + back * 0.4);
   const across = lat >= 1 ? 0 : Math.cos(lat * Math.PI / 2) ** 1.2;
-  const rise = 4.3 + 2.8 * smoothstep(0, 22, back);
+  const rise = 3.5 + 3.6 * smoothstep(0, 20, back);
   const tail = 1 - smoothstep(24, 40, back);
   const front = 1 - smoothstep(-0.5, 8, u);
   // Right behind the facade the turf clears the hoods across the whole front, easing off smoothly.
-  const clear = 4.4 * (1 - smoothstep(hw - 0.5, hw + 4, Math.abs(v))) * (1 - smoothstep(2, 8, back));
+  const clear = (3.5 + back * 0.12) * (1 - smoothstep(hw - 0.5, hw + 4, Math.abs(v))) * (1 - smoothstep(2, 8, back));
   return hole.y + smax(rise * across * tail, clear, 1.2) * front;
 }
 
@@ -823,6 +829,11 @@ function nearestOnLanes(x, z, lanes) {
     be.reach2 = 34 * 34;
     // A level terrace in front of the door, a dry-stone retaining wall, then a slope with steps.
     be.terrace = 4.6;
+    be.gateX = 3.2; // the gate, right of the door as seen from the lane
+    // ...at the lane's garden-side edge there.
+    be.gateU = be.yard;
+    for (let u = be.terrace + 1; u < be.yard + 8; u += 0.1)
+      if (laneMask(be.x + be.fx * u + be.fz * be.gateX, be.z + be.fz * u - be.fx * be.gateX) > 0.05) { be.gateU = u - 0.15; break; }
     be.laneY = laneY;
   }
 
@@ -912,7 +923,9 @@ function nearestOnLanes(x, z, lanes) {
     if (hole.arc) {
       // Bag End's garden is lawn and flagstones; only the flight of steps is kept clear.
       const a = [hole.x + hole.fx * (hole.terrace + 0.2) + hole.fz * 0.2, hole.z + hole.fz * (hole.terrace + 0.2) - hole.fx * 0.2];
-      const b = [hole.x + hole.fx * (hole.yard + 0.4) + hole.fz * 0.2, hole.z + hole.fz * (hole.yard + 0.4) - hole.fx * 0.2];
+      const g = hole.gateX || 0.2;
+      const bu = (hole.gateU ?? hole.yard) + 0.4;
+      const b = [hole.x + hole.fx * bu + hole.fz * g, hole.z + hole.fz * bu - hole.fx * g];
       bakePolyline([a, b], 1.6, laneDist, laneWidth, [hole.y - 0.9, hole.laneY + 0.1], laneHeight, 1, nextLaneId++);
       // A gravel strip under the flagstones from the door to the top of the steps.
       const d0 = [hole.x + hole.fx * 0.6, hole.z + hole.fz * 0.6];
