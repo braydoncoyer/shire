@@ -9,6 +9,7 @@ import { Builder, mtx, box, cylinder, polyEdges, footprintRoof, cleanPoly, polyD
 import { GREEN_DRAGON, GEO, BRIDGE, heightAt } from './Layout.js';
 import { GreenDragonInterior, HALL, CEILING } from './Interior.js';
 import { LAYERS } from '../core/Layers.js';
+import { PORCH } from './Sites.js';
 
 const TIMBER = 0x4a3526, OCHRE = 0xd8b060, STONE = 0xb0a690, STONE_DARK = 0x8c8474;
 
@@ -387,6 +388,7 @@ export class GreenDragon {
       const edges = polyEdges(cleanPoly(G.poly), G.y);
       const kinds = ['hydrangea', 'roses', 'marigold', 'yellow', 'bush', 'broad'];
       for (const e of edges) {
+        if (Math.hypot(e.a[0] - PORCH.e.a[0], e.a[1] - PORCH.e.a[1]) < 0.1) continue; // under the porch
         const ex = (e.b[0] - e.a[0]) / e.len, ez = (e.b[1] - e.a[1]) / e.len;
         for (let t = 0.8; t < e.len - 0.6; t += 1.3 + rnd() * 1.2) {
           const px = e.a[0] + ex * t + e.n[0] * 0.9, pz = e.a[1] + ez * t + e.n[1] * 0.9;

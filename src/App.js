@@ -21,6 +21,7 @@ import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
 import { Smoke } from './world/Smoke.js';
 import { Wildlife } from './world/Wildlife.js';
+import { Surroundings } from './world/Surroundings.js';
 
 // The shadow passes draw everything with one shared depth material, copying each mesh's alphaTest
 // onto it. Material's setter bumps the version whenever alphaTest crosses zero, and a version change
@@ -95,6 +96,8 @@ export class App {
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
+    this.surroundings = new Surroundings(this.mats);
+    scene.add(this.surroundings.group);
     // Smoke from about half the chimneys, always the inn's hearth and Bag End.
     const chimneys = [this.greenDragon.chimneys[0], this.holes.chimneys[0]];
     [...this.greenDragon.chimneys.slice(1), ...this.holes.chimneys.slice(3), ...this.buildings.chimneys].forEach((c, i) => {
@@ -105,7 +108,7 @@ export class App {
     scene.add(this.smoke.mesh);
     this.wildlife = new Wildlife(this.maps, this.sky);
     scene.add(this.wildlife.group);
-    this.lampLight.bake([...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps], this.terrain.heights);
+    this.lampLight.bake([...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps, ...this.surroundings.lamps], this.terrain.heights);
     // Alpha-tested meshes (leaves, thatch fringe) draw after the opaque ones, which also lets the
     // GPU's hidden-surface removal cull more of what's behind them.
     scene.traverse((o) => {
@@ -115,7 +118,7 @@ export class App {
     // mill wheel).
     const moving = new Set();
     this.buildings.wheel.traverse((o) => moving.add(o));
-    for (const g of [this.terrain.group, this.water.group, this.grass.group, this.vegetation.group, this.greenDragon.group, this.holes.group, this.boundaries.group, this.shrubs.group, this.buildings.group]) {
+    for (const g of [this.terrain.group, this.water.group, this.grass.group, this.vegetation.group, this.greenDragon.group, this.holes.group, this.boundaries.group, this.shrubs.group, this.buildings.group, this.surroundings.group]) {
       g.updateMatrixWorld(true);
       g.traverse((o) => {
         if (moving.has(o)) return;
@@ -127,7 +130,7 @@ export class App {
 
     this.input = new Input(renderer.domElement);
     this.player = new Player(camera, this.input);
-    this.player.colliders.push(...this.vegetation.colliders, ...this.holes.colliders, ...this.buildings.colliders, ...this.greenDragon.colliders);
+    this.player.colliders.push(...this.vegetation.colliders, ...this.holes.colliders, ...this.buildings.colliders, ...this.greenDragon.colliders, ...this.surroundings.colliders);
     const s = this.settings;
     if (s.cam) this.player.setPose(s.cam[0], s.cam[1], s.cam[2], s.cam[3], s.cam[4]);
     if (s.fly) this.player.fly = true;

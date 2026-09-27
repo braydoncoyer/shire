@@ -57,6 +57,17 @@ export function makeMaterials(sky, noiseTex, lampLight) {
   })();
   masonry.normalNode = bumpMap(Fn(() => smoothstep(0.0, 0.05, stoneCell().y))(), 1.2);
 
+  // Hide and fleece (livestock): the tint, mottled.
+  const hide = new THREE.MeshStandardNodeMaterial({ roughness: 0.95 });
+  hide.colorNode = Fn(() => vcol.mul(texture(noiseTex, positionWorld.xz.add(positionWorld.y).mul(1.7)).g.mul(0.3).add(0.82)))();
+  // Striped awning cloth: bands across uv.x (meters) in the tint and cream.
+  const cloth = new THREE.MeshStandardNodeMaterial({ roughness: 0.9, side: THREE.DoubleSide });
+  cloth.colorNode = Fn(() => {
+    const band = step(0.5, fract(uv().x.mul(2.2)));
+    const fade = texture(noiseTex, uv().mul(0.9)).a.mul(0.18).add(0.84);
+    return mix(vec3(0.86, 0.8, 0.66), vcol, band).mul(fade);
+  })();
+
   // Wood: long grain along uv.y, tinted by vertex color (natural oak or paint).
   const wood = new THREE.MeshStandardNodeMaterial({ roughness: 0.85 });
   wood.colorNode = Fn(() => {
@@ -188,10 +199,10 @@ export function makeMaterials(sky, noiseTex, lampLight) {
   const pane = new THREE.MeshStandardNodeMaterial({ roughness: 0.06, metalness: 0, transparent: true, opacity: 0.22, depthWrite: false });
   pane.colorNode = vec3(0.1, 0.12, 0.1);
 
-  const mats = { stone, masonry, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
+  const mats = { stone, masonry, hide, cloth, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock };
   // Lamplight after dark on every diffuse surface.
   if (lampLight)
-    for (const m of [stone, masonry, wood, paint, brick, roof, plaster, thatch, turf, fringe, straw, rock])
+    for (const m of [stone, masonry, hide, cloth, wood, paint, brick, roof, plaster, thatch, turf, fringe, straw, rock])
       m.emissiveNode = lampLight.emission(m.colorNode.rgb, positionWorld);
   mats.flicker = flicker;
   return mats;
