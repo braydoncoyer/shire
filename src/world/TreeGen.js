@@ -44,18 +44,23 @@ export const SPECIES = {
     leaves: { perTip: 7, size: 2.1, spread: 1.0, texture: 'needles', aspect: 0.75 },
     color: 0x3c5a2c,
   },
-  // The Party Tree: a huge old radiata pine (~25 m) with a stout trunk, heavy grey limbs rising
-  // and spreading from low down, and an open, domed crown of dark needle clumps.
+  // The Party Tree: a huge old radiata pine (~28 m), taller than it is wide. A stout trunk splits
+  // into long grey limbs that rise steeply into an open, vase-shaped crown of sparse, dark needle
+  // tufts, with sky showing through; a few low limbs sweep out almost level and droop at the ends.
   partyPine: {
-    trunk: { length: 3.4, radius: 1.2, wobble: 0.05 },
+    trunk: { length: 4.6, radius: 1.15, wobble: 0.05 },
     levels: [
-      { children: 12, start: 0.25, angle: 49, lenFactor: 1, radFactor: 0.48, wobble: 0.1, up: 0.075, droop: 0.012, segLen: 1.6, spread: 1 },
-      { children: 7, start: 0.25, angle: 48, lenFactor: 0.4, radFactor: 0.5, wobble: 0.2, up: 0.05, droop: 0.03, segLen: 1.0, spread: 1 },
-      { children: 4, start: 0.35, angle: 40, lenFactor: 0.5, radFactor: 0.55, wobble: 0.25, up: 0.1, droop: 0.02, segLen: 0.7, spread: 1 },
+      {
+        children: 10, start: 0.3, angle: 33, lenFactor: 1, radFactor: 0.46, wobble: 0.07, up: 0.015, droop: 0, segLen: 1.6, spread: 1,
+        // The first few limbs, lowest on the trunk, reach out sideways instead of up.
+        low: { count: 3, angle: 80, droop: 0.07, up: 0, length: 0.85 },
+      },
+      { children: 8, start: 0.3, angle: 40, lenFactor: 0.36, radFactor: 0.5, wobble: 0.2, up: 0.05, droop: 0.02, segLen: 1.0, spread: 1 },
+      { children: 4, start: 0.4, angle: 40, lenFactor: 0.5, radFactor: 0.55, wobble: 0.25, up: 0.08, droop: 0.02, segLen: 0.7, spread: 1 },
     ],
-    firstLength: 17.5,
-    leaves: { perTip: 7, size: 2.4, spread: 1.2, texture: 'needles', aspect: 0.75 },
-    color: 0x566f42,
+    firstLength: 19,
+    leaves: { perTip: 6, size: 2.3, spread: 1.0, texture: 'needles', aspect: 0.75 },
+    color: 0x3e5634,
   },
   poplar: {
     trunk: { length: 17, radius: 0.32, wobble: 0.03 },
@@ -220,12 +225,13 @@ export function growTree(speciesName, seed) {
       const pd = pts[i + 1].clone().sub(pts[i]).normalize();
       phi += 2.39996; // golden angle
       const side = perpendicular(pd).applyAxisAngle(pd, phi);
-      const ang = THREE.MathUtils.degToRad(next.angle * (0.8 + rand() * 0.4));
+      const low = next.low && k < next.low.count ? next.low : null;
+      const ang = THREE.MathUtils.degToRad((low ? low.angle : next.angle) * (0.8 + rand() * 0.4));
       const cd = pd.clone().multiplyScalar(Math.cos(ang)).addScaledVector(side, Math.sin(ang)).normalize();
       // Scaffold limbs off the trunk have the species' own reach; finer branches scale down.
       const reach = level === 0 ? spec.firstLength : length * next.lenFactor;
-      const len = reach * (1.1 - t * 0.5) * (0.8 + rand() * 0.35);
-      grow(pos, cd, len, Math.max(0.015, pr * next.radFactor), level + 1, next);
+      const len = reach * (1.1 - t * 0.5) * (0.8 + rand() * 0.35) * (low ? low.length : 1);
+      grow(pos, cd, len, Math.max(0.015, pr * next.radFactor), level + 1, low ? { ...next, ...low } : next);
     }
   }
 

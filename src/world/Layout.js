@@ -605,6 +605,45 @@ function naturalHeight(x, z) {
   return h;
 }
 
+// Gandalf's Cutting: the lane into the village runs through a narrow cut in a low hill, between
+// steep grassy walls taller than a hobbit, and the village opens out as you step from its mouth.
+// Added after the lanes are laid, so the walls rise right at the lane's edge (and the lane itself,
+// and the hobbit-hole siting, never see them).
+const CUTTING = (() => {
+  const segs = GEO.paths.filter((p) => p.name === "Gandalf's Cutting");
+  // Join the mapped pieces into one line starting at the village end.
+  const pts = [...segs.find((p) => p.pts[0][0] < 120).pts];
+  for (const p of segs) if (p.pts[0][0] >= 120) pts.push(...p.pts.slice(1));
+  const acc = [0];
+  for (let i = 1; i < pts.length; i++) acc.push(acc[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const xs = pts.map((p) => p[0]), zs = pts.map((p) => p[1]), R = 30;
+  return { pts, acc, H: 4.2, x0: Math.min(...xs) - R, x1: Math.max(...xs) + R, z0: Math.min(...zs) - R, z1: Math.max(...zs) + R };
+})();
+
+function cuttingBank(x, z) {
+  const C = CUTTING;
+  if (x < C.x0 || x > C.x1 || z < C.z0 || z > C.z1) return 0;
+  let best = Infinity, s = 0;
+  for (let i = 0; i < C.pts.length - 1; i++) {
+    const [ax, az] = C.pts[i], [bx, bz] = C.pts[i + 1];
+    const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+    const t = clamp(((x - ax) * dx + (z - az) * dz) / l2, 0, 1);
+    const q = (ax + dx * t - x) ** 2 + (az + dz * t - z) ** 2;
+    if (q < best) { best = q; s = C.acc[i] + t * Math.sqrt(l2); }
+  }
+  const d = Math.sqrt(best);
+  if (d > 30) return 0;
+  // Open at both ends: the cut runs from a few meters out of the village to where the lane
+  // comes down off the open pasture.
+  const along = smoothstep(3, 13, s) * (1 - smoothstep(40, 52, s));
+  if (along <= 0) return 0;
+  const n = fbm2(x / 7 + 3, z / 7 - 9, 2);
+  // Steep walls from just off the lane's edge, a rounded top, then the hill falls away.
+  const wall = smoothstep(1.35 + n * 0.3, 3.8 + n * 0.6, d);
+  const hill = 1 - smoothstep(9, 30, d);
+  return C.H * (1 + n * 0.25) * wall * hill * along;
+}
+
 function baseHeight(x, z) {
   let h = naturalHeight(x, z);
   const lane = laneAt(x, z);
@@ -645,7 +684,7 @@ function baseHeight(x, z) {
   // The mill race: a channel of open water under the waterwheel.
   const wd = Math.hypot(x - MILL.wheelX, z - MILL.wheelZ);
   if (wd < 6) h = lerp(Math.min(h, WATER_Y - 1.1), h, smoothstep(2.6, 6, wd));
-  return h;
+  return h + cuttingBank(x, z);
 }
 
 // ---------------------------------------------------------------------------------------------
