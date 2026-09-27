@@ -23,32 +23,32 @@ const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 // arrival. `pan` sweeps the view (radians) while you stand there; `fov` pushes in.
 const STOPS = [
   {
-    at: [116, -87], look: [30, -75, 2], hold: [5, 3.5], hour: 17.1, pan: 0.3,
+    at: [116, -87], look: [30, -75, 2], hold: [5, 3.5], hour: 16.7, pan: 0.3,
     title: 'Hobbiton', line: 'Out of the cutting, the village opens up across the hillside.',
   },
   {
-    at: [59, -50], look: [-60, -100, 3], hold: [6, 4], hour: 17.4, pan: 0.15,
+    at: [59, -50], look: [-60, -100, 3], hold: [6, 4], hour: 16.9, pan: 0.15,
     title: 'The lane up to Bag End', line: 'Between two grassy banks, up the Hill to the oak — the view from the films.',
   },
   {
-    at: [12, -66], look: [-2, -75, 2], hold: [7, 0], hour: 17.8, pan: 0.5, only: 'full',
+    at: [12, -66], look: [-2, -75, 2], hold: [7, 0], hour: 17.1, pan: 0.5, only: 'full',
     title: 'The Party Field', line: 'Laid out for Bilbo’s eleventy-first birthday: the pavilion, the dance ring and the bandstand.',
   },
   {
-    at: [-11.4, -54.5], look: [-10.54, -60.47, 1.0], hold: [6, 4], hour: 18.0, pan: 0.5,
+    at: [-11.4, -54.5], look: [-10.54, -60.47, 1.0], hold: [6, 4], hour: 17.3, pan: 0.5,
     title: 'Bagshot Row', line: 'Sam Gamgee’s yellow door, below the Hill.',
   },
   {
-    at: [-54.5, -96.5], look: [-65.86, -103.82, 1.0], hold: [7, 5], hour: 18.3, pan: 0.1, fov: 52,
+    at: [-54.5, -96.5], look: [-65.86, -103.82, 1.0], hold: [7, 5], hour: 17.55, pan: 0.1, fov: 52,
     title: 'Bag End', line: 'Bilbo’s hole under the Hill. No admittance except on party business.',
   },
   {
-    at: [-57, -97], look: [27, -44, 4], hold: [7, 5], hour: 18.55, pan: 0.35,
+    at: [-57, -97], look: [27, -44, 4], hold: [7, 5], hour: 17.75, pan: 0.35,
     title: 'The view from Bag End', line: 'Over the Party Field and the Party Tree to the Bywater and the Green Dragon.',
     next: { cut: 'short' },
   },
   {
-    at: [21, -30.5], look: [67, 138, 6], hold: [6, 4], hour: 18.9, pan: 0.3,
+    at: [21, -30.5], look: [67, 138, 6], hold: [6, 4], hour: 18.85, pan: 0.3,
     title: 'The Party Tree', line: 'The great pine above the water, hung with lanterns for the party.',
     // The walk on from here is the long way round the lake.
     next: { title: 'The Merry Meander', line: 'Round the Bywater by the lakeside path, to the Mill.', cut: 'short' },
@@ -71,8 +71,12 @@ const AERIAL = {
   pts: [[40, 78, 175], [118, 52, 60], [182, 26, -40], [176, 6, -112], null],
   looks: [[-20, 8, -60], [-10, 6, -70], [120, 4, -95], [150, 3, -97], null],
 };
-const SPEED = { full: 2.8, short: 3.6 }; // walking, m/s
-const START_HOUR = 16.75;
+const SPEED = { full: 2.8, short: 3.0 }; // walking, m/s
+const RAMP = 2.2; // seconds to get up to walking speed, and to slow to a stop
+// The light is set per stop, not by a running clock: warm afternoon sun on Bag End's door (it's in
+// the Hill's shadow by six), long shadows from its gate, sunset behind the Party Tree, dusk at the
+// Mill, and night by the time you reach the Green Dragon.
+const START_HOUR = 16.4;
 
 export class Tour {
   constructor(app) {
@@ -128,16 +132,16 @@ export class Tour {
     const ahead = along(landing, 8);
     const pts = AERIAL.pts.slice(0, -1).concat([[LAND[0], groundAt(...LAND) + EYE, LAND[1]]]);
     const looks = AERIAL.looks.slice(0, -1).concat([[ahead[0], groundAt(...ahead) + EYE * 0.9, ahead[1]]]);
-    push({ type: 'fly', dur: full ? 22 : 15, pts, looks, hour0: START_HOUR, hour1: START_HOUR + 0.2, line: { title: 'Gandalf’s Cutting', line: 'The way in: over the Bywater and down into the lane through the hill.' } });
+    push({ type: 'fly', dur: full ? 22 : 15, pts, looks, hour0: START_HOUR, hour1: 16.6, line: { title: 'Gandalf’s Cutting', line: 'The way in: over the Bywater and down into the lane through the hill.' } });
 
-    let from = LAND, hour = START_HOUR + 0.2, prevStop = null;
+    let from = LAND, hour = 16.6, prevStop = null;
     stops.forEach((s, i) => {
       const cut = prevStop?.next?.cut === kind || prevStop?.next?.cut === true;
       if (cut) {
         push({ type: 'cut', dur: 1.8, hour0: hour, hour1: s.hour, to: s });
       } else {
         const r = i === 0 ? landing : route(from, s.at);
-        push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
+        push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, from: prevStop, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
       }
       push({ type: 'hold', dur: s.hold[full ? 0 : 1], stop: s, index: i, count: stops.length, hour0: s.hour, hour1: s.finale ? s.hour + 0.45 : s.hour + 0.02 });
       hour = s.finale ? s.hour + 0.45 : s.hour + 0.02;
@@ -154,20 +158,20 @@ export class Tour {
       inside.length += d;
     }
     const hearth = { at: inside.pts[inside.pts.length - 1], look: [INN.hearth[0], INN.hearth[1], 0.8], pan: 0.15, hold: [6, 5], title: 'By the fire', line: '' };
-    push({ type: 'walk', dur: this._walkTime(inside.length, speed * 0.8), r: inside, speed: speed * 0.8, hour0: hour, hour1: hour + 0.05, to: hearth });
+    push({ type: 'walk', dur: this._walkTime(inside.length, speed * 0.8), r: inside, speed: speed * 0.8, hour0: hour, hour1: hour + 0.05, to: hearth, from: prevStop });
     push({ type: 'hold', dur: hearth.hold[full ? 0 : 1], stop: hearth, hour0: hour + 0.05, hour1: hour + 0.1, last: true });
     return { segs, total: t };
   }
 
   /** Time to walk `len` m at `v` m/s, easing in and out over a second or so. */
   _walkTime(len, v) {
-    const ramp = 1.2, dRamp = v * ramp * 0.5;
+    const ramp = RAMP, dRamp = v * ramp * 0.5;
     return len < dRamp * 2 ? 2 * Math.sqrt(len / (v / ramp)) : ramp * 2 + (len - dRamp * 2) / v;
   }
 
   /** Distance walked `t` s into a walk of `len` m at `v` m/s. */
   _walkDist(t, len, v, dur) {
-    const ramp = 1.2, a = v / ramp;
+    const ramp = RAMP, a = v / ramp;
     if (len < v * ramp) {
       const h = dur / 2;
       return t < h ? 0.5 * a * t * t : len - 0.5 * a * (dur - t) ** 2;
@@ -191,6 +195,7 @@ export class Tour {
     this.yaw = null;
     this.camY = null;
     this.fov = s.fov;
+    this.fovV = 0;
     this.state = 'playing';
     app.input.blockLock = true;
     if (document.pointerLockElement) document.exitPointerLock();
@@ -288,21 +293,30 @@ export class Tour {
     const u = (t - seg.t0) / seg.dur;
     s.time = lerp(seg.hour0, seg.hour1, clamp(u, 0, 1));
 
-    let x, y, z, look, walking = false, speed = 0, flying = false, fov = s.fov, k = 3;
+    // `smoothT`: how long the view takes to settle on where it should look (a damped spring, so turns
+    // ease in and out rather than snapping round); `maxTurn`: the fastest it turns, rad/s.
+    let x, y, z, look, walking = false, speed = 0, flying = false, fov = s.fov, smoothT = 0.9, maxTurn = 0.75;
     if (seg.type === 'fly') {
       const e = smooth(u);
       [x, y, z] = catmull(seg.pts, e);
       look = catmull(seg.looks, e);
       flying = true;
-      k = 8;
+      smoothT = 0.4;
+      maxTurn = 2;
     } else if (seg.type === 'walk') {
       const r = seg.r, d = this._walkDist(t - seg.t0, r.length, seg.speed, seg.dur);
       [x, z] = along(r, d);
-      const [ax, az] = along(r, Math.min(r.length, d + 6));
-      const aheadLook = [ax, groundAt(ax, az) + EYE * 0.85, az];
-      // Coming up to a stop, turn toward what it's for.
-      const w = smooth((d - (r.length - 8)) / 7);
-      look = mixLook(aheadLook, this._target(seg.to), w);
+      // Look well down the path (a few points averaged, so bends are taken gently)...
+      const ahead = [0, 0, 0];
+      for (const a of [5, 9, 13]) {
+        const [ax, az] = along(r, Math.min(r.length, d + a));
+        ahead[0] += ax / 3; ahead[1] += (groundAt(ax, az) + EYE * 0.85) / 3; ahead[2] += az / 3;
+      }
+      // ...easing away from the last stop's view as you set off, and toward the next one's as you
+      // come up to it.
+      look = ahead;
+      if (seg.from) look = mixLook(this._stopLook(seg.from, 1), look, smooth(d / 10));
+      look = mixLook(look, this._stopLook(seg.to, 0), smooth((d - (r.length - 14)) / 12));
       const dd = 0.2, [bx, bz] = along(r, Math.min(r.length, d + dd));
       speed = Math.min(seg.speed, (this._walkDist(Math.min(seg.dur, t - seg.t0 + 0.05), r.length, seg.speed, seg.dur) - d) / 0.05);
       this._vel = [(bx - x) / dd * speed, (bz - z) / dd * speed];
@@ -310,22 +324,22 @@ export class Tour {
     } else if (seg.type === 'cut') {
       // Fade out where you are, fade in at the next stop.
       if (u < 0.5) { x = this.lastX; z = this.lastZ; look = this.lastLook; }
-      else { [x, z] = seg.to.at; look = this._target(seg.to); }
+      else { [x, z] = seg.to.at; look = this._stopLook(seg.to, 0); }
       if (!this.cutting) { this._fade(1, seg.dur * 0.45); this.cutting = seg; }
       if (u >= 0.5 && this.cutting === seg && !this.cutIn) { this._fade(0, seg.dur * 0.45); this.cutIn = true; this.yaw = null; this.camY = null; }
     } else {
       const st = seg.stop;
       [x, z] = st.at;
-      look = this._target(st);
       // A slow sweep across the view, and a gentle push in where there's something to look closer at.
-      if (st.pan) look = panLook([x, z], look, st.pan * (smooth(u) - 0.5));
+      look = this._stopLook(st, u);
       if (st.fov) fov = lerp(s.fov, st.fov, smooth(u * 1.4));
       if (st.finale && !this.fireworksFired && t - seg.t0 > 1.5) {
         this.fireworksFired = true;
         app.fireworks.start();
       }
       if (seg.last && u > 0.75 && this.state === 'playing') this._fade(0.55, 2);
-      k = 2.2;
+      smoothT = 1.1;
+      maxTurn = 0.6;
       if (this.captionKey !== seg) this._caption(st.title, st.line, seg.index !== undefined ? `Stop ${seg.index + 1} of ${seg.count}` : 'The Green Dragon');
       this.captionKey = seg;
     }
@@ -339,22 +353,22 @@ export class Tour {
     const ground = groundAt(x, z);
     if (!flying) y = ground + EYE;
     if (this.camY === null || flying) this.camY = y;
-    else this.camY += (y - this.camY) * (1 - Math.exp(-dt * 9));
+    else this.camY += (y - this.camY) * (1 - Math.exp(-dt * 6));
     const p = app.player;
     if (walking) p.bob += speed * dt * 1.25;
-    const camY = this.camY + (walking ? Math.sin(p.bob * 2) * 0.02 : 0);
+    const camY = this.camY + (walking ? Math.sin(p.bob * 2) * 0.012 : 0);
 
     // Where it looks, turning smoothly.
     const dx = look[0] - x, dy = look[1] - camY, dz = look[2] - z;
     const yaw = Math.atan2(-dx, -dz), pitch = Math.atan2(dy, Math.hypot(dx, dz));
-    if (this.yaw === null || this.state !== 'playing') {
-      if (this.yaw === null) { this.yaw = yaw; this.pitch = pitch; }
-    } else {
-      const f = 1 - Math.exp(-dt * k);
-      this.yaw = wrap(this.yaw + wrap(yaw - this.yaw) * f);
-      this.pitch += (pitch - this.pitch) * f;
+    if (this.yaw === null) {
+      this.yaw = yaw; this.pitch = pitch; this.yawV = 0; this.pitchV = 0;
+    } else if (this.state === 'playing') {
+      [this.yaw, this.yawV] = damp(this.yaw, this.yaw + wrap(yaw - this.yaw), this.yawV, smoothT, maxTurn, dt);
+      this.yaw = wrap(this.yaw);
+      [this.pitch, this.pitchV] = damp(this.pitch, pitch, this.pitchV, smoothT, maxTurn * 0.5, dt);
     }
-    this.fov += (fov - this.fov) * (1 - Math.exp(-dt * 2));
+    if (this.state === 'playing') [this.fov, this.fovV] = damp(this.fov, fov, this.fovV || 0, 1.2, 20, dt);
 
     // Drive the walker, so footsteps, the indoor check and the sounds all follow along.
     p.fly = flying;
@@ -372,6 +386,12 @@ export class Tour {
 
   get current() {
     return this._current;
+  }
+
+  /** Where a stop's view points `u` (0..1) of the way through its pan. */
+  _stopLook(st, u) {
+    const look = this._target(st);
+    return st.pan ? panLook(st.at, look, st.pan * (smooth(u) - 0.5)) : look;
   }
 
   /** What a stop looks at: a point `up` m above the ground (or the water) at [x, z]. */
@@ -397,6 +417,21 @@ export class Tour {
     this.el.caption.classList.remove('on');
     this.captionKey = null;
   }
+}
+
+/**
+ * A critically damped spring toward `target` (as Unity's SmoothDamp): settles in about `time` s,
+ * never faster than `max` units/s, with no jolt when the target moves. Returns [value, velocity].
+ */
+function damp(cur, target, vel, time, max, dt) {
+  const w = 2 / time, x = w * dt, e = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const lim = max * time;
+  const change = clamp(cur - target, -lim, lim), to = cur - change;
+  const tmp = (vel + w * change) * dt;
+  const nv = (vel - w * tmp) * e;
+  let out = to + (change + tmp) * e;
+  if ((target - cur > 0) === (out > target)) return [target, 0];
+  return [out, nv];
 }
 
 /** Centripetal-ish Catmull-Rom through `pts` (arrays of 3), at 0..1 along them. */
