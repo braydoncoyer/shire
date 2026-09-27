@@ -36,9 +36,11 @@ export const PRESETS = {
 };
 export const QUALITY_KEYS = Object.keys(PRESETS.high);
 
-// What the panel remembers between visits (not the camera, the hour or the sky, which start each
-// visit on a fair afternoon).
+// Everything the settings panel sets is remembered between visits. The sky's own values are kept
+// only when it was set by hand, and the hour only when time stands still (otherwise each visit
+// starts on a fair afternoon).
 const SAVED = ['preset', ...QUALITY_KEYS, 'timeSpeed', 'weather', 'fov', 'sensitivity', 'invertY', 'showFps', 'volume', 'muted'];
+const SKY = ['clouds', 'haze', 'windSpeed'];
 const STORE = 'shire.settings.v3';
 
 export class Settings {
@@ -53,7 +55,7 @@ export class Settings {
         saved = JSON.parse(localStorage.getItem('shire.settings.v2') || '{}');
         delete saved.timeSpeed;
       }
-      for (const k of SAVED) if (k in saved) this[k] = saved[k];
+      for (const k of [...SAVED, ...SKY, 'time']) if (k in saved) this[k] = saved[k];
     } catch {}
 
     const q = new URLSearchParams(location.search);
@@ -90,8 +92,18 @@ export class Settings {
     if (this.shot) return;
     try {
       const out = Object.fromEntries(SAVED.map((k) => [k, this[k]]));
-      if (out.weather === 'custom') out.weather = 'changing'; // a sky set by hand lasts one visit
+      if (this.weather === 'custom') for (const k of SKY) out[k] = this[k];
+      if (this.timeSpeed === 0) out.time = this.time;
       localStorage.setItem(STORE, JSON.stringify(out));
+    } catch {}
+  }
+
+  /** Back to the defaults, and forget what was saved. */
+  reset() {
+    Object.assign(this, DEFAULTS);
+    this.setPreset('high');
+    try {
+      localStorage.removeItem(STORE);
     } catch {}
   }
 }

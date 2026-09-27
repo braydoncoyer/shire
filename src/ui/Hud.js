@@ -5,7 +5,8 @@ export class Hud {
   constructor(app) {
     this.app = app;
     this.start = document.getElementById('start');
-    this.title = document.getElementById('start-title');
+    this.eyebrow = document.getElementById('start-eyebrow');
+    this.go = document.getElementById('start-go');
     this.fps = document.getElementById('fps');
     this.toastEl = document.getElementById('toast');
     this.frames = 0;
@@ -27,6 +28,8 @@ export class Hud {
       if (locked) this.started = true;
       this.refresh();
     });
+    // Whatever was last set is kept when the page closes (e.g. the hour, when time stands still).
+    addEventListener('pagehide', () => app.settings.save());
     this.refresh();
   }
 
@@ -34,7 +37,8 @@ export class Hud {
   refresh() {
     const app = this.app;
     this.start.hidden = app.settings.shot || app.input.locked || app.panel?.isOpen || app.photo?.active;
-    this.title.textContent = this.started ? 'Click to carry on walking' : 'Click to walk in the Shire';
+    this.eyebrow.textContent = this.started ? 'Paused' : 'A walk in Hobbiton';
+    this.go.textContent = this.started ? 'Carry on walking' : 'Enter the Shire';
     this.fps.hidden = !app.settings.showFps || app.photo?.active;
   }
 
@@ -48,8 +52,10 @@ export class Hud {
 
   handleKeys(input) {
     const app = this.app, s = app.settings;
-    if (input.wasPressed('BracketLeft')) s.time = (s.time - 0.25 + 24) % 24;
-    if (input.wasPressed('BracketRight')) s.time = (s.time + 0.25) % 24;
+    if (input.wasPressed('BracketLeft') || input.wasPressed('BracketRight')) {
+      s.time = (s.time + (input.wasPressed('BracketLeft') ? -0.25 : 0.25) + 24) % 24;
+      s.save();
+    }
     if (input.wasPressed('Backquote')) {
       s.showFps = !s.showFps;
       s.save();

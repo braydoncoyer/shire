@@ -6,6 +6,9 @@ import * as THREE from 'three/webgpu';
 import { heightAt } from '../world/Layout.js';
 import { EYE } from '../player/Player.js';
 
+/** Color a slider's track up to its thumb. */
+const fill = (el) => el.style.setProperty('--pct', `${((el.value - el.min) / (el.max - el.min)) * 100}%`);
+
 const clock = (t) => {
   const h = Math.floor(t), m = Math.floor((t - h) * 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -78,8 +81,8 @@ export class PhotoMode {
       this.inputs.set(c.key, { c, input, out });
       body.append(row);
       if (c.key === 'dof') {
-        const b = Object.assign(document.createElement('button'), { className: 'pill', textContent: 'Focus on the centre of the view' });
-        b.style.cssText = 'width:100%;margin:4px 0 6px';
+        const b = Object.assign(document.createElement('button'), { className: 'pill small block', textContent: 'Focus on the centre of the view' });
+        b.style.margin = '4px 0 8px';
         b.dataset.dofRow = '';
         b.addEventListener('click', () => this.autofocus());
         this.focusButton = b;
@@ -106,6 +109,7 @@ export class PhotoMode {
       if (c.check) input.checked = v;
       else input.value = String(v);
       if (out) out.textContent = c.fmt(v);
+      if (input.type === 'range') fill(input);
     }
     for (const r of this.el.querySelectorAll('[data-dof]')) r.hidden = !this.state.dof;
     this.focusButton.hidden = !this.state.dof;

@@ -163,6 +163,7 @@ export class App {
     this.grass.update(0, camera, this.settings, renderer);
     this.vegetation.update(0, this.settings, camera);
     await renderer.compileAsync(scene, camera);
+    progress('Lighting the lamps');
     // Warm up behind the loading screen, so nothing hitches the first time it comes into view: one
     // frame with nothing culled and every tree detail level shown gives every mesh its buffers,
     // bindings and pipelines in every pass, then a frame toward each heading settles the rest.

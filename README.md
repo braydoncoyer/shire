@@ -36,8 +36,8 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 - **Time and weather:** time of day, the length of a day, the weather, clouds, haze and wind.
 - **View, controls and sound:** field of view, mouse sensitivity, invert Y, frame rate readout,
   volume and mute.
-- Graphics, view, sound, day length and weather mode are saved in the browser. Each visit starts on
-  a fair afternoon.
+- Every change is saved in the browser and remembered next visit, including a sky set by hand, and
+  the hour when time stands still. **Reset to defaults** (click twice) clears them.
 - If frames run slowly, a one-time hint suggests a lighter preset.
 
 ## Day and weather

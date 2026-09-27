@@ -3,6 +3,9 @@
 
 import { PRESETS, QUALITY_KEYS } from '../core/Settings.js';
 
+/** Color a slider's track up to its thumb. */
+const fill = (el) => el.style.setProperty('--pct', `${((el.value - el.min) / (el.max - el.min)) * 100}%`);
+
 const clock = (t) => {
   const h = Math.floor(t), m = Math.floor((t - h) * 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -17,7 +20,7 @@ const SECTIONS = [
     preset: true,
     controls: [
       { key: 'renderScale', label: 'Render scale', kind: 'range', min: 0.5, max: 1.25, step: 0.05, fmt: pct },
-      { key: 'maxDpr', label: 'Sharpness on high-DPI screens', kind: 'select', options: [[1, 'Standard'], [1.5, 'Sharp'], [2, 'Full']] },
+      { key: 'maxDpr', label: 'High-DPI sharpness', kind: 'select', options: [[1, 'Standard'], [1.5, 'Sharp'], [2, 'Full']] },
       { key: 'msaa', label: 'Anti-aliasing (4× MSAA)', kind: 'check' },
       { key: 'shadowSize', label: 'Shadow detail', kind: 'select', options: [[1024, 'Low'], [2048, 'Medium'], [4096, 'High']] },
       { key: 'grassReach', label: 'Grass reach', kind: 'select', options: [['near', 'Near'], ['full', 'Far']] },
@@ -66,7 +69,8 @@ export class Panel {
     this.inputs = new Map();
     this._build();
     this.el.querySelector('[data-close]').addEventListener('click', () => this.close());
-    document.getElementById('settings-reset').addEventListener('click', () => this.reset());
+    this.resetButton = document.getElementById('settings-reset');
+    this.resetButton.addEventListener('click', () => this.reset());
     addEventListener('keydown', (e) => {
       if (this.isOpen && e.code === 'Escape') this.close();
     });
@@ -159,6 +163,7 @@ export class Panel {
       if (c.kind === 'check') input.checked = !!v;
       else input.value = String(v);
       if (out) out.textContent = c.fmt(v);
+      if (input.type === 'range') fill(input);
     }
     const preset = s.matchingPreset();
     for (const b of this.presetSeg.children) b.setAttribute('aria-pressed', String(b.dataset.preset === preset));
@@ -178,14 +183,32 @@ export class Panel {
       if (!c.live || document.activeElement === input) continue;
       input.value = String(s[c.key]);
       out.textContent = c.fmt(s[c.key]);
+      fill(input);
     }
   }
 
+  /** Two clicks: the first asks, the second resets everything to the defaults. */
   reset() {
-    const s = this.app.settings;
-    s.setPreset('high');
-    Object.assign(s, { fov: 62, sensitivity: 1, invertY: false, showFps: false, volume: 0.7, muted: false, timeSpeed: 2.4, weather: 'changing' });
+    const b = this.resetButton;
+    if (!this.confirming) {
+      this.confirming = true;
+      b.textContent = 'Click again to reset';
+      b.classList.add('warn');
+      this.resetTimer = setTimeout(() => this._endConfirm(), 3000);
+      return;
+    }
+    this._endConfirm();
+    this.app.settings.reset();
+    this.app.sky.resetHistory();
     this._changed(true);
+    this.app.hud.toast('Settings reset to their defaults');
+  }
+
+  _endConfirm() {
+    clearTimeout(this.resetTimer);
+    this.confirming = false;
+    this.resetButton.textContent = 'Reset to defaults';
+    this.resetButton.classList.remove('warn');
   }
 
   open() {
