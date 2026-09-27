@@ -846,6 +846,8 @@ function nearestOnLanes(x, z, lanes) {
       if (Math.hypot(dx, dz) < 34 && dx * be.fx + dz * be.fz > -6) continue;
     }
     if (Math.abs(c.x) > 270 || Math.abs(c.z) > 270) continue;
+    // Clear of the Green Dragon, its outbuilding and the Mill, mound and all.
+    if ([GREEN_DRAGON.poly, GREEN_DRAGON.shed, building("Sandyman's Mill").poly].some((p) => polyDistSimple(p, c.x, c.z) < 22)) continue;
     if (lakeFactor(c.x, c.z) > 0 || lakeDist(c.x, c.z) < 8 || pondDist(c.x, c.z) < 9) continue;
     if (pondDist(c.px, c.pz) < 4) continue;
     // Keep other lanes out of the mound behind and the yard in front, and the facade off the lane.

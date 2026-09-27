@@ -13,7 +13,7 @@ const CW = 96; // column width, m
 const VX = VILLAGE.x - 10, VZ = VILLAGE.z - 10, VR0 = 165, VR1 = 200;
 const GX = GREEN_DRAGON.x, GZ = GREEN_DRAGON.z, GR0 = 30, GR1 = 45;
 // The ploughed field on the rise behind the Green Dragon, where it shows from the bridge.
-const PLOUGH_AT = [150, 215];
+const PLOUGH_AT = [100, 232];
 const PLOUGH_P = 0.022, HAY_P = 0.1;
 
 // Hash without sine: stable across float32 (GPU) and float64 (CPU) for small integers.

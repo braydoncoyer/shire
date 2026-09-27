@@ -99,9 +99,9 @@ export class Buildings {
         const t = -Br.half + (2 * Br.half * i) / N;
         pts.push([t, inner]);
       }
-      // Splayed wing walls beyond the ends.
+      // A short splayed stub beyond each end (the lanes turn off right at the ends).
       const wing = (sign) => {
-        for (let k = 1; k <= 4; k++) pts[sign > 0 ? 'push' : 'unshift']([sign * (Br.half + k * 0.8), inner + k * 0.45]);
+        pts[sign > 0 ? 'push' : 'unshift']([sign * (Br.half + 0.7), inner + 0.35]);
       };
       wing(1); wing(-1);
       for (let i = 0; i < pts.length - 1; i++) {

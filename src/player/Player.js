@@ -100,10 +100,12 @@ export class Player {
   }
 
   _collide(x, z) {
-    // Keep out of the water: slide along the shore by trying each axis on its own.
-    if (lakeFactor(x, z) > 0.55) {
-      if (lakeFactor(x, this.pos.z) <= 0.55) z = this.pos.z;
-      else if (lakeFactor(this.pos.x, z) <= 0.55) x = this.pos.x;
+    // Keep out of the water (the bridge deck excepted): slide along the shore by trying each axis
+    // on its own.
+    const wet = (a, b) => lakeFactor(a, b) > 0.55 && surfaceAt(a, b) === -Infinity;
+    if (wet(x, z)) {
+      if (!wet(x, this.pos.z)) z = this.pos.z;
+      else if (!wet(this.pos.x, z)) x = this.pos.x;
       else return [this.pos.x, this.pos.z];
     }
     const r = Math.hypot(x, z);
