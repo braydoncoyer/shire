@@ -1006,6 +1006,8 @@ function nearestOnLanes(x, z, lanes) {
       if (Math.hypot(dx, dz) < 34 && dx * be.fx + dz * be.fz > -6) continue;
     }
     if (Math.abs(c.x) > 270 || Math.abs(c.z) > 270) continue;
+    // Clear of the Party Tree's lawn and Bilbo's party.
+    if (Math.hypot(c.x - ptX, c.z - ptZ) < 24 || Math.hypot(c.x - PARTY.pavilion.x, c.z - PARTY.pavilion.z) < 16 || Math.hypot(c.x - PARTY.dance.x, c.z - PARTY.dance.z) < 12) continue;
     // Clear of the view up the village to Bag End.
     { const v = vistaDist(c.x, c.z); if ((v.d < 9 + v.t * 0.04 && v.t < 118) || Math.hypot(c.x - VISTA.ax, c.z - VISTA.az) < 26) continue; }
     // Clear of the Green Dragon, its outbuilding and the Mill, mound and all.

@@ -114,9 +114,12 @@ export class Boundaries {
         const a = (k / n) * Math.PI * 2, x = pt.x + Math.cos(a) * R, z = pt.z + Math.sin(a) * R;
         pts.push({ x, z, y: heightAt(x, z) });
       }
+      // Open where a path crosses the ring: no rope over the path, and no post standing in it.
+      const onPath = (x, z) => laneMask(x, z) > 0.05;
       for (let k = 0; k < n; k++) {
         const p = pts[k], q = pts[k + 1];
-        B.add('wood', box(0.1, 0.75, 0.1), mtx(p.x, p.y + 0.3, p.z, 0, rand() * 3, 0), POST);
+        if (!onPath(p.x, p.z)) B.add('wood', box(0.1, 0.75, 0.1), mtx(p.x, p.y + 0.3, p.z, 0, rand() * 3, 0), POST);
+        if ([0, 0.25, 0.5, 0.75, 1].some((t) => onPath(p.x + (q.x - p.x) * t, p.z + (q.z - p.z) * t))) continue;
         const len = Math.hypot(q.x - p.x, q.z - p.z), yaw = Math.atan2(-(q.z - p.z), q.x - p.x);
         for (let s = 0; s < 4; s++) {
           const t0 = s / 4, t1 = (s + 1) / 4, sag = (t) => 0.12 * Math.sin(Math.PI * t);
@@ -187,13 +190,15 @@ export class Boundaries {
         // Each tread sits at the height of the higher end of its run.
         const d0 = (k / n) * L, d1 = ((k + 1) / n) * L;
         const a = at((d0 + d1) / 2), top = Math.max(at(d0).y, at(d1).y) - 0.08;
+        // Deep enough to reach down to the step below, however steep the flight.
+        const deep = Math.max(0.3, Math.abs(at(d1).y - at(d0).y) + 0.22);
         const w = st.width * 0.92;
         let x = -w / 2;
         while (x < w / 2 - 0.1) {
           const sw = Math.min(0.5 + rand() * 0.5, w / 2 - x);
           const ox = x + sw / 2;
-          const m = mtx(a.x, top - 0.14, a.z, 0, a.yaw, 0).multiply(mtx((rand() - 0.5) * 0.04, 0, ox, (rand() - 0.5) * 0.04, (rand() - 0.5) * 0.1, (rand() - 0.5) * 0.04));
-          B.add('rock', box(L / n + 0.14, 0.3, sw - 0.03), m, STEP[Math.floor(rand() * STEP.length)]);
+          const m = mtx(a.x, top + 0.01 - deep / 2, a.z, 0, a.yaw, 0).multiply(mtx((rand() - 0.5) * 0.04, 0, ox, (rand() - 0.5) * 0.04, (rand() - 0.5) * 0.1, (rand() - 0.5) * 0.04));
+          B.add('rock', box(L / n + 0.14, deep, sw - 0.03), m, STEP[Math.floor(rand() * STEP.length)]);
           x += sw;
         }
       }

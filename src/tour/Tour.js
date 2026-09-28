@@ -30,14 +30,17 @@ const STOPS = [
   },
   {
     at: [16, -57], face: [-3, -79], pitch: 0.14, hold: [7, 4.5], hour: 17.3, pan: -0.3,
+    quote: ['When Mr. Bilbo Baggins of Bag End announced that he would shortly be celebrating his eleventy-first birthday with a party of special magnificence, there was much talk and excitement in Hobbiton.', 'The Fellowship of the Ring'],
     title: 'The Party Field', line: 'Laid out for Bilbo’s eleventy-first birthday: the pavilion, the dance ring and the bandstand.',
   },
   {
     at: [-4, -47], face: [-18, -61], pitch: 0.05, hold: [6, 4], hour: 17.5, pan: 0.3,
+    quote: ['In a hole in the ground there lived a hobbit.', 'The Hobbit'],
     title: 'Bagshot Row', line: 'Stone steps climb past the round doors and gardens below the Hill.',
   },
   {
     at: [-54.5, -96.5], face: [-65, -103.3], pitch: 0.12, hold: [7, 5], hour: 17.7, pan: 0.12, fov: 56,
+    quote: ['It had a perfectly round door like a porthole, painted green, with a shiny yellow brass knob in the exact middle.', 'The Hobbit'],
     title: 'Bag End', line: 'Bilbo’s hole under the Hill. No admittance except on party business.',
   },
   {
@@ -47,16 +50,19 @@ const STOPS = [
   },
   {
     at: [52, -40], face: [-40, 5], pitch: 0.06, hold: [7, 5], hour: 19.2, pan: 0.3,
+    quote: ['…for they love peace and quiet and good tilled earth: a well-ordered and well-farmed countryside was their favourite haunt.', 'The Fellowship of the Ring'],
     title: 'The Party Tree', line: 'The great pine above the water, hung with lanterns, as the sun goes down.',
     // The walk on from here is the long way round the lake.
     next: { title: 'The Merry Meander', line: 'Round the Bywater by the lakeside path, to the Mill.', cut: 'short', via: [-20, -25] },
   },
   {
     at: [4, 119], face: [60, 125], pitch: 0.06, hold: [7, 5], hour: 19.55, pan: 0.3,
+    quote: ['The Road goes ever on and on / Down from the door where it began.', 'The Fellowship of the Ring'],
     title: 'The Mill and the bridge', line: 'Sandyman’s Mill turns on the Mill Run, and the double-arched bridge leads to the inn.',
   },
   {
     at: [48, 122], face: [24, 40], pitch: 0.2, hold: [60, 42], hour: 19.7, hourEnd: 20.6, pan: 0.2, finale: true,
+    quote: ['There were rockets like a flight of scintillating birds singing with sweet voices.', 'The Fellowship of the Ring'],
     title: 'The Green Dragon', line: 'Dusk turns to night, and Gandalf’s fireworks go up over the water.',
   },
 ];
@@ -89,6 +95,9 @@ export class Tour {
       caption: document.getElementById('tour-caption'),
       progress: document.getElementById('tour-progress'),
       fade: document.getElementById('tour-fade'),
+      quote: document.getElementById('tour-quote'),
+      quoteText: document.getElementById('tour-quote-text'),
+      quoteSource: document.getElementById('tour-quote-source'),
       menu: document.getElementById('tour-menu'),
       menuEyebrow: document.getElementById('tour-menu-eyebrow'),
       menuTitle: document.getElementById('tour-menu-title'),
@@ -141,7 +150,7 @@ export class Tour {
         push({ type: 'cut', dur: 1.8, hour0: hour, hour1: s.hour, to: s });
       } else {
         const r = i === 0 ? landing : via ? join(route(from, via), route(via, s.at)) : route(from, s.at);
-        push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, from: prevStop, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
+        push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, from: prevStop, quote: s.finale ? null : s.quote, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
       }
       push({ type: 'hold', dur: s.hold[full ? 0 : 1], stop: s, index: i, count: stops.length, hour0: s.hour, hour1: s.hourEnd ?? s.hour + 0.02 });
       hour = s.hourEnd ?? s.hour + 0.02;
@@ -204,6 +213,7 @@ export class Tour {
     this._fade(1, 0);
     this._fade(0, 1.4);
     this.captionKey = null;
+    this._quote(null);
     app.hud.refresh();
     app.audio.resume();
   }
@@ -347,13 +357,19 @@ export class Tour {
     if (seg.type === 'walk' && seg.caption && this.captionKey !== seg) { this._caption(seg.caption.title, seg.caption.line, 'On the way'); this.captionKey = seg; }
     if (seg.type === 'fly' && this.captionKey !== seg) { this._caption(seg.line.title, seg.line.line, 'Welcome to the Shire'); this.captionKey = seg; }
     if (seg.type === 'walk' && !seg.caption && this.captionKey?.type === 'hold' && t - seg.t0 > 2.5) this._hideCaption();
+    // Tolkien's words on some of the walks, and over the fireworks.
+    let quote = null;
+    if (seg.type === 'walk' && seg.quote && t - seg.t0 > 1.5 && seg.t0 + seg.dur - t > 3) quote = seg.quote;
+    if (seg.type === 'hold' && seg.stop.finale && this.fireworksFired && s.time < FIREWORKS_AT + 0.28) quote = seg.stop.quote;
+    this._quote(quote);
     this.lastX = x; this.lastZ = z; this.lastLook = look;
 
     // Where the eye is: on the ground at a hobbit's height when walking, gently smoothed over steps.
     const ground = groundAt(x, z);
     if (!flying) y = ground + EYE;
     if (this.camY === null || flying) this.camY = y;
-    else this.camY += (y - this.camY) * (1 - Math.exp(-dt * 6));
+    // (Quick to rise, so climbing a flight of steps never sinks the eye into them; gentle going down.)
+    else this.camY += (y - this.camY) * (1 - Math.exp(-dt * (y > this.camY ? 18 : 6)));
     const p = app.player;
     if (walking) p.bob += speed * dt * 1.25;
     const camY = this.camY + (walking ? Math.sin(p.bob * 2) * 0.012 : 0);
@@ -363,7 +379,7 @@ export class Tour {
     const yaw = Math.atan2(-dx, -dz);
     // On the move, keep the eyes up: never looking down at your feet or up at the sky.
     let pitch = Math.atan2(dy, Math.hypot(dx, dz));
-    if (walking) pitch = clamp(pitch, -0.08, 0.12);
+    if (walking) pitch = clamp(pitch, -0.12, 0.5); // (enough to look up a flight of steps)
     if (this.yaw === null) {
       this.yaw = yaw; this.pitch = pitch; this.yawV = 0; this.pitchV = 0;
     } else if (this.state === 'playing') {
@@ -419,6 +435,20 @@ export class Tour {
       el.line.textContent = line;
       el.caption.classList.add('on');
     }, 350);
+  }
+
+  _quote(q) {
+    if (q === this.quoteShown) return;
+    this.quoteShown = q;
+    const el = this.el;
+    el.quote.classList.remove('on');
+    clearTimeout(this.quoteTimer);
+    if (!q) return;
+    this.quoteTimer = setTimeout(() => {
+      el.quoteText.textContent = `“${q[0]}”`;
+      el.quoteSource.textContent = `J.R.R. Tolkien, ${q[1]}`;
+      el.quote.classList.add('on');
+    }, 900);
   }
 
   _hideCaption() {

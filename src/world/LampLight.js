@@ -13,9 +13,9 @@ import { texture, uniform, float, color, smoothstep, step, abs, vec3 } from 'thr
 import { INNER_HALF } from './Layout.js';
 
 const RES = 0.5;
-const INTENSITY = 0.27; // candela-like, in the scene's light units
-const EMAX = 0.14; // irradiance stored at full scale
-const REACH = 8.5; // meters
+const INTENSITY = 0.62; // candela-like, in the scene's light units
+const EMAX = 0.32; // irradiance stored at full scale
+const REACH = 11; // meters
 const FLASH = 150; // a firework burst's strength, same units
 const Y0 = -15, Y_RANGE = 60; // lantern heights encoded in the second channel
 

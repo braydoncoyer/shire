@@ -185,7 +185,8 @@ export class HobbitHoles {
       B.add('wood', box(1.2, 0.5, 0.5), at(bx, 0.25, yard - 1.1), WEATHERED);
       for (const s of [-0.3, 0.3]) B.add('thatch', new THREE.SphereGeometry(0.24, 10, 8, 0, Math.PI * 2, 0, Math.PI / 1.7), at(bx + s, 0.5, yard - 1.1), 0xd0b070);
     }
-    if (rand() < 0.3) {
+    // Most gates have a lamp post: the lanes are lit by the hobbits' own lamps after dark.
+    if (rand() < 0.75) {
       const lpx = -gate - 0.5;
       B.add('metal', box(0.07, 2.0, 0.07), atG(lpx, 1.0, fz - 0.25), 0x2a2622);
       lantern(B, atG(lpx, 2.16, fz - 0.25), 0.2);

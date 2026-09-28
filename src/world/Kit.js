@@ -199,7 +199,7 @@ export function makeMaterials(sky, noiseTex, lampLight) {
     const lit = attribute('color', 'vec3').r;
     const grid = step(0.06, abs(fract(uv().x.mul(2)).sub(0.5))).mul(0.4).add(0.6);
     // Scene-referred: a warm lamp-lit window, a few times brighter than the moonlit ground.
-    return lampWarm.mul(lit).mul(smoothstep(0.05, 0.6, night)).mul(0.11).mul(grid).mul(flicker.mul(0.08).add(0.95));
+    return lampWarm.mul(lit).mul(smoothstep(0.05, 0.6, night)).mul(0.24).mul(grid).mul(flicker.mul(0.08).add(0.95));
   })();
 
   // Window panes you can see through (the Green Dragon's common room): a faint tint and a sharp
@@ -213,7 +213,7 @@ export function makeMaterials(sky, noiseTex, lampLight) {
   paper.emissiveNode = Fn(() => {
     // Brightest across the middle of the lantern, where the flame sits.
     const mid = float(1).sub(abs(uv().y.sub(0.5)).mul(1.2));
-    return vcol.mul(vcol).mul(vec3(1, 0.72, 0.42)).mul(smoothstep(0.05, 0.6, night)).mul(0.16).mul(mid).mul(flicker.mul(0.12).add(0.92));
+    return vcol.mul(vcol).mul(vec3(1, 0.72, 0.42)).mul(smoothstep(0.05, 0.6, night)).mul(0.26).mul(mid).mul(flicker.mul(0.12).add(0.92));
   })();
 
   const mats = { stone, masonry, hide, cloth, wood, paint, brick, roof, metal, glass, pane, plaster, thatch, turf, fringe, straw, rock, paper };
