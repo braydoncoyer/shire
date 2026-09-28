@@ -57,18 +57,32 @@ const STOPS = [
   },
   {
     at: [4, 119], face: [60, 125], pitch: 0.06, hold: [7, 5], hour: 19.55, pan: 0.3,
-    quote: ['The Road goes ever on and on / Down from the door where it began.', 'The Fellowship of the Ring'],
+    quote: ['The Road goes ever on and on / Down from the door where it began.', 'The Fellowship of the Ring'], quoteOnWalk: true,
     title: 'The Mill and the bridge', line: 'Sandyman’s Mill turns on the Mill Run, and the double-arched bridge leads to the inn.',
   },
   {
-    at: [48, 122], face: [24, 40], pitch: 0.2, hold: [60, 42], hour: 19.7, hourEnd: 20.6, pan: 0.2, finale: true,
+    at: [48, 122], face: [24, 40], pitch: 0.2, hold: [38, 28], hour: 20.05, hourEnd: 20.45, pan: 0.2, finale: true,
     quote: ['There were rockets like a flight of scintillating birds singing with sweet voices.', 'The Fellowship of the Ring'],
     title: 'The Green Dragon', line: 'Dusk turns to night, and Gandalf’s fireworks go up over the water.',
   },
 ];
-const FIREWORKS_AT = 20.0; // the finale's show starts once it's dark enough
+const QUOTE_TIME = 8, QUOTE_LEAD = 3.5; // seconds a quote is up, and how long before arriving it comes
+const FIREWORKS_AFTER = 2.5; // seconds after reaching the Green Dragon, the first rockets go up
 // Inside to the fire: through the open door off the lane, to stand before the hearth.
-const INN = { door: [75.1, 128.2], inside: [73.5, 132.8], hearth: [74.8, 136.1] };
+const INN = {
+  door: [75.1, 128.2],
+  // Through the main door, and across the hall between the tables.
+  walk: [[73.5, 132.8], [70.5, 134.4], [66.5, 137.4], [64, 138.5]],
+  stop: {
+    at: [64, 138.5], face: [74.8, 136.1], pitch: 0.0, pan: -0.9, hold: [8, 6],
+    title: 'The Green Dragon', line: 'Inside, the fire is lit, the chandeliers are burning, and there’s a table waiting.',
+  },
+};
+// The last shot: Hobbiton by night from above the Party Tree, its lanterns in the foreground.
+const FINALE = {
+  pts: [[45, 17.4, -43], [50, 19.9, -46]], looks: [[-5, 2, -110], [-5, 2, -110]], hour: 21.3, land: [52, -40],
+  step: 'The end of the tour', title: 'Goodnight, Hobbiton', line: 'The lamps are lit, and the Shire settles in for the night.',
+};
 
 // The opening glide: down from high over the lake to the mouth of Gandalf's Cutting.
 const LAND = [161.5, -109.6];
@@ -150,25 +164,28 @@ export class Tour {
         push({ type: 'cut', dur: 1.8, hour0: hour, hour1: s.hour, to: s });
       } else {
         const r = i === 0 ? landing : via ? join(route(from, via), route(via, s.at)) : route(from, s.at);
-        push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, from: prevStop, quote: s.finale ? null : s.quote, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
+        push({ type: 'walk', dur: this._walkTime(r.length, speed), r, speed, hour0: hour, hour1: s.hour, to: s, from: prevStop, caption: prevStop?.next?.line && !cut ? { title: prevStop.next.title, line: prevStop.next.line } : null });
       }
       push({ type: 'hold', dur: s.hold[full ? 0 : 1], stop: s, index: i, count: stops.length, hour0: s.hour, hour1: s.hourEnd ?? s.hour + 0.02 });
       hour = s.hourEnd ?? s.hour + 0.02;
       from = s.at;
       prevStop = s;
     });
-    // In to the fire.
+    // In through the door, across the common room, and round to the fire.
     const r = route(from, INN.door);
     const inside = { pts: [...r.pts], length: r.length };
-    for (const p of [INN.inside, [INN.inside[0] + (INN.hearth[0] - INN.inside[0]) * 0.1, INN.inside[1] + (INN.hearth[1] - INN.inside[1]) * 0.1]]) {
+    for (const p of INN.walk) {
       const last = inside.pts[inside.pts.length - 1];
       const d = Math.hypot(p[0] - last[0], p[1] - last[1]), n = Math.max(1, Math.round(d / 0.5));
       for (let k = 1; k <= n; k++) inside.pts.push([last[0] + ((p[0] - last[0]) * k) / n, last[1] + ((p[1] - last[1]) * k) / n]);
       inside.length += d;
     }
-    const hearth = { at: inside.pts[inside.pts.length - 1], look: [INN.hearth[0], INN.hearth[1], 0.8], pan: 0.15, hold: [6, 5], title: 'By the fire', line: '' };
-    push({ type: 'walk', dur: this._walkTime(inside.length, speed * 0.8), r: inside, speed: speed * 0.8, hour0: hour, hour1: hour + 0.05, to: hearth, from: prevStop });
-    push({ type: 'hold', dur: hearth.hold[full ? 0 : 1], stop: hearth, hour0: hour + 0.05, hour1: hour + 0.1, last: true });
+    push({ type: 'walk', dur: this._walkTime(inside.length, speed * 0.75), r: inside, speed: speed * 0.75, hour0: hour, hour1: hour + 0.05, to: INN.stop, from: prevStop });
+    push({ type: 'hold', dur: INN.stop.hold[full ? 0 : 1], stop: INN.stop, hour0: hour + 0.05, hour1: hour + 0.1 });
+    // And a last look over Hobbiton by night, from above the Party Tree, drifting slowly back.
+    const fin = { type: 'fly', dur: full ? 18 : 15, pts: FINALE.pts, looks: FINALE.looks, hour0: FINALE.hour, hour1: FINALE.hour + 0.05, line: FINALE, final: true, land: FINALE.land, linear: true };
+    push({ type: 'cut', dur: 2.4, hour0: hour + 0.1, hour1: FINALE.hour, pose: fin });
+    push(fin);
     return { segs, total: t };
   }
 
@@ -241,8 +258,8 @@ export class Tour {
       s.save();
     }
     // (Mid-glide, you land where the glide would have: at the mouth of the cutting.)
-    const flying = this.seg?.type === 'fly';
-    const [x, z] = flying ? LAND : [app.camera.position.x, app.camera.position.z];
+    const flying = this.seg?.type === 'fly' || !!this.seg?.pose;
+    const [x, z] = flying ? (this.seg.land || this.seg.pose?.land || LAND) : [app.camera.position.x, app.camera.position.z];
     p.fly = false;
     p.setPose(x, undefined, z, this.yaw ?? p.yaw, flying ? 0 : this.pitch ?? 0);
     app.applyQuality();
@@ -281,6 +298,7 @@ export class Tour {
   /** Jump to `t` seconds in (for screenshots). */
   seek(t) {
     this.t = t;
+    this.app.sky.resetHistory();
     this.yaw = null;
     this.camY = null;
   }
@@ -294,20 +312,20 @@ export class Tour {
     const { segs, total } = this.plan;
     if (this.t >= total && this.state === 'playing') {
       this.state = 'ended';
-      this._menu('The end of the tour', 'The Green Dragon', 'Stay a while by the fire, or head back out into the night.', false);
+      this._menu('The end of the tour', 'Goodnight, Hobbiton', 'Walk on through the lamplit lanes, or take the tour again.', false);
     }
     const t = Math.min(this.t, total - 1e-3);
     let seg = segs[0];
     for (const g of segs) if (t >= g.t0) seg = g;
     this.seg = seg;
     const u = (t - seg.t0) / seg.dur;
-    s.time = lerp(seg.hour0, seg.hour1, clamp(u, 0, 1));
+    s.time = seg.type === 'cut' ? (u < 0.5 ? seg.hour0 : seg.hour1) : lerp(seg.hour0, seg.hour1, clamp(u, 0, 1));
 
     // `smoothT`: how long the view takes to settle on where it should look (a damped spring, so turns
     // ease in and out rather than snapping round); `maxTurn`: the fastest it turns, rad/s.
     let x, y, z, look, walking = false, speed = 0, flying = false, fov = s.fov, smoothT = 0.9, maxTurn = 0.75;
     if (seg.type === 'fly') {
-      const e = smooth(u);
+      const e = seg.linear ? u : smooth(u);
       [x, y, z] = catmull(seg.pts, e);
       look = catmull(seg.looks, e);
       flying = true;
@@ -334,17 +352,19 @@ export class Tour {
     } else if (seg.type === 'cut') {
       // Fade out where you are, fade in at the next stop.
       if (u < 0.5) { x = this.lastX; z = this.lastZ; look = this.lastLook; }
+      else if (seg.pose) { [x, y, z] = seg.pose.pts[0]; look = seg.pose.looks[0]; flying = true; }
       else { [x, z] = seg.to.at; look = this._stopLook(seg.to, 0); }
+      if (u < 0.5 && this.captionKey) this._hideCaption();
       if (!this.cutting) { this._fade(1, seg.dur * 0.45); this.cutting = seg; }
-      if (u >= 0.5 && this.cutting === seg && !this.cutIn) { this._fade(0, seg.dur * 0.45); this.cutIn = true; this.yaw = null; this.camY = null; }
+      if (u >= 0.5 && this.cutting === seg && !this.cutIn) { this._fade(0, seg.dur * 0.45); this.cutIn = true; this.yaw = null; this.camY = null; app.sky.resetHistory(); }
     } else {
       const st = seg.stop;
       [x, z] = st.at;
       // A slow sweep across the view, and a gentle push in where there's something to look closer at.
       look = this._stopLook(st, u);
       if (st.fov) fov = lerp(s.fov, st.fov, smooth(u * 1.4));
-      if (st.finale && !this.fireworksFired && s.time >= FIREWORKS_AT) {
-        this.fireworksFired = true;
+      if (st.finale && !this.fireworksFired && t - seg.t0 >= FIREWORKS_AFTER) {
+        this.fireworksFired = t;
         app.fireworks.start();
       }
       if (seg.last && u > 0.75 && this.state === 'playing') this._fade(0.55, 2);
@@ -355,12 +375,20 @@ export class Tour {
     }
     if (seg.type !== 'cut') { this.cutting = null; this.cutIn = false; }
     if (seg.type === 'walk' && seg.caption && this.captionKey !== seg) { this._caption(seg.caption.title, seg.caption.line, 'On the way'); this.captionKey = seg; }
-    if (seg.type === 'fly' && this.captionKey !== seg) { this._caption(seg.line.title, seg.line.line, 'Welcome to the Shire'); this.captionKey = seg; }
+    if (seg.type === 'fly' && this.captionKey !== seg && (!seg.final || u > 0.12)) { this._caption(seg.line.title, seg.line.line, seg.line.step || 'Welcome to the Shire'); this.captionKey = seg; }
     if (seg.type === 'walk' && !seg.caption && this.captionKey?.type === 'hold' && t - seg.t0 > 2.5) this._hideCaption();
-    // Tolkien's words on some of the walks, and over the fireworks.
+    // Tolkien's words, briefly: as you come up to the place they describe (or a little way into a
+    // walk they belong to), and once the fireworks are up.
     let quote = null;
-    if (seg.type === 'walk' && seg.quote && t - seg.t0 > 1.5 && seg.t0 + seg.dur - t > 3) quote = seg.quote;
-    if (seg.type === 'hold' && seg.stop.finale && this.fireworksFired && s.time < FIREWORKS_AT + 0.28) quote = seg.stop.quote;
+    if (seg.type === 'walk' && seg.to.quote) {
+      const q = seg.to, left = seg.t0 + seg.dur - t, into = t - seg.t0;
+      if (q.quoteOnWalk ? into > 2 && into < 2 + QUOTE_TIME : left < QUOTE_LEAD && !q.finale) quote = q.quote;
+    }
+    if (seg.type === 'hold' && seg.stop.quote && !seg.stop.quoteOnWalk) {
+      const st = seg.stop, into = t - seg.t0;
+      if (!st.finale && into < QUOTE_TIME - QUOTE_LEAD) quote = st.quote;
+      if (st.finale && this.fireworksFired && t - this.fireworksFired > 3 && t - this.fireworksFired < 3 + QUOTE_TIME) quote = st.quote;
+    }
     this._quote(quote);
     this.lastX = x; this.lastZ = z; this.lastLook = look;
 
