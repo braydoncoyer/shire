@@ -24,6 +24,7 @@ import { Weather } from './sky/Weather.js';
 import { Rain } from './sky/Rain.js';
 import { Fireworks } from './sky/Fireworks.js';
 import { Tour } from './tour/Tour.js';
+import { Attract } from './tour/Attract.js';
 import { weatherU } from './sky/Weather.js';
 import { LAYERS, setLayer } from './core/Layers.js';
 import { LampLight } from './world/LampLight.js';
@@ -165,6 +166,7 @@ export class App {
     this.panel = new Panel(this);
     this.photo = new PhotoMode(this);
     this.tour = new Tour(this);
+    this.attract = new Attract(this);
     this.audio = new Ambience(this);
 
     addEventListener('resize', () => this.resize());
@@ -192,9 +194,11 @@ export class App {
     const yaw = this.player.yaw;
     this.rain.mesh.visible = true; // it only shows in rain; build it now all the same
     this.fireworks.mesh.visible = true; // likewise, only during a show
+    // Six turns about the spawn, then the start screen's view over the village.
     const warm = async (k) => {
       this.player.yaw = yaw + (k * Math.PI) / 3;
       this.player.update(0);
+      if (k === 7) this.attract.apply(0);
       this.camera.updateMatrixWorld();
       this.lighting.update(0, camera);
       this.vegetation.showAll(k === 0);
@@ -207,13 +211,14 @@ export class App {
     const pipes = renderer._pipelines, pending = [];
     const updateForRender = pipes.updateForRender;
     pipes.updateForRender = (ro) => pipes.getForRender(ro, pending);
-    for (let k = 0; k <= 6; k++) await warm(k);
+    for (let k = 0; k <= 7; k++) await warm(k);
     pipes.updateForRender = updateForRender;
     for (const o of culled) o.frustumCulled = false;
     let done = 0;
     await Promise.all(pending.map((p) => p.then(() => progress('Compiling shaders', ++done / pending.length))));
     progress('Lighting the lamps');
-    for (let k = 0; k <= 6; k++) await warm(k);
+    for (let k = 0; k <= 7; k++) await warm(k);
+    this.player.yaw = yaw;
     this.rain.mesh.visible = false;
     this.fireworks.mesh.visible = false;
     if (this.settings.fireworksNow !== null) {
@@ -290,6 +295,7 @@ export class App {
 
     // On the tour it has the camera; otherwise you do.
     if (this.tour.active) this.tour.update(this.photo.active ? 0 : dt);
+    else if (this.attract.active) this.attract.update(dt);
     else this.player.update(dt);
     this.camera.updateMatrixWorld();
     this.lighting.update(dt, this.camera);

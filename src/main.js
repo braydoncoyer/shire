@@ -1,6 +1,13 @@
 import { App } from './App.js';
 
 const loader = document.getElementById('loader');
+// The picture fades in once it has arrived (it's usually there before the first frame).
+{
+  const art = loader.querySelector('.art');
+  const img = new Image();
+  img.onload = () => art.classList.add('in');
+  img.src = matchMedia('(max-width: 900px)').matches ? './loader-sm.webp' : './loader.webp';
+}
 const status = document.getElementById('loader-status');
 const bar = document.getElementById('loader-bar');
 const pct = document.getElementById('loader-pct');

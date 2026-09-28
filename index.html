@@ -7,6 +7,9 @@
     <meta name="description" content="A first-person walk through Hobbiton, generated in the browser with Three.js and WebGPU." />
     <meta name="theme-color" content="#0c0f0b" />
     <link rel="icon" href="./favicon.svg" />
+    <!-- The loading screen's picture of Hobbiton, fetched first. -->
+    <link rel="preload" as="image" href="./loader.webp" type="image/webp" media="(min-width: 901px)" fetchpriority="high" />
+    <link rel="preload" as="image" href="./loader-sm.webp" type="image/webp" media="(max-width: 900px)" fetchpriority="high" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Fonts load alongside everything else rather than holding up the first paint. -->
@@ -62,16 +65,23 @@
          Loading screen */
       #loader {
         position: fixed; inset: 0; z-index: 30; overflow: hidden;
-        background: radial-gradient(120% 90% at 80% 10%, #1a2231 0%, #10151a 45%, var(--bg) 100%);
-        transition: opacity 1.1s var(--ease), visibility 0s linear 1.1s;
+        background: var(--bg);
+        transition: opacity 1.4s var(--ease), visibility 0s linear 1.4s;
       }
       #loader.done { opacity: 0; visibility: hidden; }
-      #loader .art { position: absolute; inset: 0; width: 100%; height: 100%; }
-      #loader .art .hill { opacity: 0; transform: translateY(24px); animation: rise 1.6s var(--ease) forwards; }
-      #loader .art .hill.h2 { animation-delay: 0.15s; }
-      #loader .art .hill.h3 { animation-delay: 0.3s; }
-      #loader .art .glow { animation: flicker 3.2s ease-in-out infinite; }
-      #loader .art .star { animation: twinkle 3s ease-in-out infinite; }
+      #loader .art {
+        position: absolute; inset: 0; opacity: 0;
+        background: url(./loader.webp) center / cover no-repeat;
+        transition: opacity 1.2s var(--ease);
+      }
+      @media (max-width: 900px) { #loader .art { background-image: url(./loader-sm.webp); } }
+      #loader .art.in { opacity: 1; }
+      #loader .veil {
+        position: absolute; inset: 0;
+        background:
+          radial-gradient(85% 75% at 0% 100%, rgba(6, 8, 5, 0.78) 0%, rgba(6, 8, 5, 0.38) 45%, transparent 75%),
+          linear-gradient(0deg, rgba(6, 8, 5, 0.45), transparent 45%);
+      }
       #loader .corner { opacity: 0; animation: fade 1.2s var(--ease) 0.2s forwards; }
       .progress { margin-top: 26px; width: min(340px, 100%); }
       .progress .track { position: relative; height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
@@ -103,7 +113,7 @@
       /* ---------------------------------------------------------------------------------------
          Start / paused screen */
       #start {
-        position: fixed; inset: 0; z-index: 5; cursor: pointer;
+        position: fixed; inset: 0; z-index: 5;
         background:
           radial-gradient(80% 70% at 0% 100%, rgba(6, 8, 5, 0.72) 0%, rgba(6, 8, 5, 0.35) 45%, transparent 75%),
           linear-gradient(0deg, rgba(6, 8, 5, 0.35), transparent 40%);
@@ -119,10 +129,35 @@
         margin: 16px 0 0; max-width: 440px; font-size: 15px; line-height: 1.55; color: var(--ink-2);
         text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
       }
+      .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; max-width: 640px; }
+      .mode {
+        position: relative; display: flex; flex-direction: column; align-items: flex-start; padding: 18px 18px 16px;
+        border-radius: var(--radius); background: var(--glass); border: 1px solid var(--line);
+        backdrop-filter: blur(14px) saturate(1.1); -webkit-backdrop-filter: blur(14px) saturate(1.1);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+        transition: border-color 0.25s, transform 0.35s var(--ease), background 0.25s;
+      }
+      .mode:hover, .mode:focus-within { border-color: rgba(217, 180, 90, 0.45); background: var(--glass-hi); transform: translateY(-2px); }
+      .mode-kicker { margin: 0; font-size: 10.5px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); }
+      .mode h2 { margin: 6px 0 0; font-family: var(--serif); font-weight: 500; font-size: 27px; line-height: 1.05; }
+      .mode-text { margin: 8px 0 14px; font-size: 13px; line-height: 1.5; color: var(--ink-2); flex: 1; }
+      .mode-text kbd { min-width: 18px; height: 18px; font-size: 10px; padding: 0 4px; }
+      .mode .seg.length { width: 100%; box-sizing: border-box; margin-bottom: 12px; }
+      .mode .seg.length span { font-weight: 400; opacity: 0.75; margin-left: 4px; }
+      .mode .go { width: 100%; justify-content: space-between; }
+      .mode .go i { font-style: normal; transition: transform 0.25s var(--ease); }
+      .mode .go:hover i { transform: translateX(3px); }
+      .links { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 18px; }
+      .links button {
+        border: 0; background: none; padding: 4px 0; cursor: pointer; font-size: 12.5px; color: var(--ink-2);
+        border-bottom: 1px solid transparent; transition: color 0.2s, border-color 0.2s;
+      }
+      .links button:hover, .links button[aria-expanded=true] { color: var(--ink); border-bottom-color: var(--line-2); }
+      .seg button[aria-checked=true] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
       .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
       .keys {
         display: grid; grid-template-columns: repeat(3, auto); justify-content: start; gap: 8px 22px;
-        margin: 26px 0 0; padding: 18px 0 0; border-top: 1px solid var(--line);
+        margin: 14px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line);
         font-size: 12px; color: var(--ink-3);
       }
       .keys div { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
@@ -315,11 +350,10 @@
         animation: fade 0.4s var(--ease);
       }
       #tour-menu h1 { font-size: clamp(44px, 6.5vw, 72px); }
-      #tour-choice { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
-      #tour-choice .pill { flex-direction: column; align-items: flex-start; gap: 2px; height: auto; padding: 9px 18px; border-radius: 14px; }
-      #tour-choice .pill small { font-size: 11px; font-weight: 400; color: var(--ink-3); }
       @media (max-width: 640px) {
         .keys { grid-template-columns: repeat(2, auto); }
+        .modes { grid-template-columns: 1fr; }
+        .mode-text { margin-bottom: 10px; }
         .panel { top: auto; left: 12px; right: 12px; bottom: 12px; width: auto; height: 64vh; }
         #photo-hint { display: none; }
         #tour .hint { display: none; }
@@ -327,6 +361,10 @@
       }
       @media (max-height: 620px) {
         .keys { display: none; }
+      }
+      @media (max-height: 760px) {
+        #start .lede { display: none; }
+        .mode-text { display: none; }
       }
       @media (prefers-reduced-motion: reduce) {
         *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
@@ -337,46 +375,10 @@
     <div id="app"></div>
 
     <div id="loader">
-      <!-- Night over the Hill: rolling hills, a lit round window, a moon and a few stars. -->
-      <svg class="art" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-        <defs>
-          <radialGradient id="lw" cx="50%" cy="50%" r="50%">
-            <stop offset="0" stop-color="#ffcf7a" />
-            <stop offset="0.35" stop-color="#e8a24a" stop-opacity="0.7" />
-            <stop offset="1" stop-color="#e8a24a" stop-opacity="0" />
-          </radialGradient>
-          <radialGradient id="moonGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0" stop-color="#f4ecd2" stop-opacity="0.35" />
-            <stop offset="1" stop-color="#f4ecd2" stop-opacity="0" />
-          </radialGradient>
-          <mask id="crescent"><circle cx="1250" cy="200" r="26" fill="#fff" /><circle cx="1262" cy="191" r="24" fill="#000" /></mask>
-        </defs>
-        <g fill="#f3ecd8">
-          <circle class="star" cx="880" cy="120" r="1.4" style="animation-delay:0s" />
-          <circle class="star" cx="1020" cy="220" r="1.1" style="animation-delay:.6s" />
-          <circle class="star" cx="1120" cy="90" r="1.3" style="animation-delay:1.2s" />
-          <circle class="star" cx="1390" cy="140" r="1.2" style="animation-delay:.3s" />
-          <circle class="star" cx="1480" cy="260" r="1" style="animation-delay:1.8s" />
-          <circle class="star" cx="760" cy="250" r="1" style="animation-delay:2.2s" />
-          <circle class="star" cx="1330" cy="330" r="1.1" style="animation-delay:.9s" />
-          <circle class="star" cx="640" cy="140" r="1.2" style="animation-delay:1.5s" />
-        </g>
-        <circle cx="1250" cy="200" r="90" fill="url(#moonGlow)" />
-        <circle cx="1250" cy="200" r="26" fill="#efe6c8" mask="url(#crescent)" />
-        <path class="hill" d="M0 610 C 260 540 470 548 720 585 S 1180 505 1600 560 V900 H0 Z" fill="#161d18" />
-        <g class="hill h2">
-          <path d="M0 700 C 330 640 640 650 930 615 C 1120 592 1260 560 1400 575 C 1490 585 1550 605 1600 620 V900 H0 Z" fill="#121813" />
-          <!-- A hobbit hole in the hill: round green door, a lit round window, a chimney. -->
-          <rect x="1244" y="538" width="16" height="36" rx="2" fill="#241c16" />
-          <circle cx="1180" cy="612" r="31" fill="#0c100c" />
-          <circle cx="1180" cy="612" r="26" fill="#1f3322" />
-          <circle cx="1180" cy="612" r="2.8" fill="#d9b45a" />
-          <circle class="glow" cx="1105" cy="620" r="46" fill="url(#lw)" opacity="0.9" />
-          <circle cx="1105" cy="620" r="11" fill="#f2b659" />
-          <path d="M1094 620 H1116 M1105 609 V631" stroke="#3a2a1a" stroke-width="2" />
-        </g>
-        <path class="hill h3" d="M0 800 C 380 748 820 770 1180 735 C 1360 718 1500 722 1600 730 V900 H0 Z" fill="#0d110d" />
-      </svg>
+      <!-- Hobbiton itself: a render of the view the start screen opens on, so the live scene fades in
+           exactly where the picture was (see src/tour/Attract.js). -->
+      <div class="art" aria-hidden="true"></div>
+      <div class="veil" aria-hidden="true"></div>
       <div class="corner">
         <p class="eyebrow">A walk in Hobbiton</p>
         <h1>The Shire</h1>
@@ -391,18 +393,31 @@
       <div class="corner">
         <p class="eyebrow" id="start-eyebrow">A walk in Hobbiton</p>
         <h1>The Shire</h1>
-        <p class="lede">A first-person walk through Hobbiton, built entirely in your browser. Wander the lanes, stop by the Green Dragon, and watch the days and weather go by.</p>
-        <div class="actions">
-          <button class="pill primary" id="start-go">Enter the Shire</button>
-          <button class="pill" id="start-tour" aria-expanded="false" aria-controls="tour-choice">Take the tour</button>
-          <button class="pill" id="start-settings">Settings</button>
-          <button class="pill" id="start-photo">Photo mode</button>
+        <p class="lede">Hobbiton, built entirely in your browser. Take the guided tour, or wander the lanes on your own and watch the days and weather go by.</p>
+        <div class="modes">
+          <section class="mode" id="mode-tour" aria-labelledby="mode-tour-h">
+            <p class="mode-kicker">Guided</p>
+            <h2 id="mode-tour-h">Take the tour</h2>
+            <p class="mode-text">A glide in over the Bywater, then on foot past Bag End and the Party Tree to the Green Dragon at nightfall.</p>
+            <div class="seg length" role="radiogroup" aria-label="Length of the tour">
+              <button role="radio" aria-checked="true" data-tour="full">Full <span>8 min</span></button>
+              <button role="radio" aria-checked="false" data-tour="short">Short <span>4 min</span></button>
+            </div>
+            <button class="pill primary go" id="start-tour">Start the tour <i aria-hidden="true">→</i></button>
+          </section>
+          <section class="mode" id="mode-walk" aria-labelledby="mode-walk-h">
+            <p class="mode-kicker">Free roam</p>
+            <h2 id="mode-walk-h">Explore on your own</h2>
+            <p class="mode-text">Walk wherever you like at a hobbit’s pace. Click to look around; <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to walk.</p>
+            <button class="pill go" id="start-go">Start exploring <i aria-hidden="true">→</i></button>
+          </section>
         </div>
-        <div id="tour-choice" hidden>
-          <button class="pill" id="tour-full">Full tour<small>About 8 minutes</small></button>
-          <button class="pill" id="tour-short">Short tour<small>About 4 minutes</small></button>
+        <div class="links">
+          <button id="start-settings">Settings</button>
+          <button id="start-photo">Photo mode</button>
+          <button id="start-keys" aria-expanded="false" aria-controls="keys">Controls</button>
         </div>
-        <div class="keys">
+        <div class="keys" id="keys" hidden>
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Walk</span></div>
           <div><kbd>Shift</kbd><span>Run</span></div>
           <div><kbd>Space</kbd><span>Jump</span></div>

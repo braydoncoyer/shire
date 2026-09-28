@@ -18,24 +18,25 @@ export class Hud {
       app.audio.resume();
       canvas.requestPointerLock?.()?.catch?.(() => {});
     };
-    this.start.addEventListener('click', (e) => {
-      if (!e.target.closest('button') || e.target.id === 'start-go') lock();
-    });
+    document.getElementById('start-go').addEventListener('click', lock);
     canvas.addEventListener('click', () => app.audio.resume());
     document.getElementById('start-settings').addEventListener('click', () => app.panel.open());
-    // Take the tour: pick its length.
-    const tourBtn = document.getElementById('start-tour'), choice = document.getElementById('tour-choice');
-    tourBtn.addEventListener('click', () => {
-      choice.hidden = !choice.hidden;
-      tourBtn.setAttribute('aria-expanded', String(!choice.hidden));
-    });
-    for (const kind of ['full', 'short'])
-      document.getElementById(`tour-${kind}`).addEventListener('click', () => {
-        choice.hidden = true;
-        tourBtn.setAttribute('aria-expanded', 'false');
-        app.tour.start(kind);
-      });
     document.getElementById('start-photo').addEventListener('click', () => app.photo.enter());
+    // The tour: pick its length, then start it.
+    this.tourKind = 'full';
+    const lengths = [...document.querySelectorAll('#mode-tour [data-tour]')];
+    for (const b of lengths)
+      b.addEventListener('click', () => {
+        this.tourKind = b.dataset.tour;
+        for (const o of lengths) o.setAttribute('aria-checked', String(o === b));
+      });
+    document.getElementById('start-tour').addEventListener('click', () => app.tour.start(this.tourKind));
+    // The full list of keys, on request.
+    const keysBtn = document.getElementById('start-keys'), keys = document.getElementById('keys');
+    keysBtn.addEventListener('click', () => {
+      keys.hidden = !keys.hidden;
+      keysBtn.setAttribute('aria-expanded', String(!keys.hidden));
+    });
     app.input.onLockChange((locked) => {
       if (locked) this.started = true;
       this.refresh();
@@ -50,7 +51,7 @@ export class Hud {
     const app = this.app;
     this.start.hidden = app.settings.shot || app.input.locked || app.panel?.isOpen || app.photo?.active || app.tour?.active;
     this.eyebrow.textContent = this.started ? 'Paused' : 'A walk in Hobbiton';
-    this.go.textContent = this.started ? 'Carry on walking' : 'Enter the Shire';
+    this.go.firstChild.textContent = this.started ? 'Carry on walking ' : 'Start exploring ';
     this.fps.hidden = !app.settings.showFps || app.photo?.active;
   }
 

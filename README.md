@@ -30,13 +30,17 @@ Needs a browser with WebGPU (recent Chrome, Edge or Safari).
 
 ## The tour
 
-**Take the tour** on the start screen for a guided walk, like the tour of the set: a glide over the
+The start screen offers two ways in. **Take the tour** (full or short) for a guided walk, like the tour of the set: a glide over the
 lake into Gandalf's Cutting, then on foot past the view up to Bag End, the Party Field set for
 Bilbo's birthday, Bagshot Row, Bag End and the view from its gate, the Party Tree, the Merry Meander,
 the Mill and the bridge, while the afternoon turns to night. It ends at the Green Dragon watching
 Gandalf's fireworks over the water, then goes in to the fire. The full tour takes about eight
 minutes, the short one about four. Any key or click pauses it; from there you can carry on, start
-again, or walk on by yourself.
+again, or walk on by yourself. **Explore on your own** to walk freely.
+
+The loading screen shows `public/loader.webp`, a render of the view behind the start screen
+(`src/tour/Attract.js` says how to regenerate it), so the live village fades in exactly where the
+picture was.
 
 ## Settings
 
