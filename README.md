@@ -40,7 +40,8 @@ again, or walk on by yourself. **Explore on your own** to walk freely.
 
 The loading screen shows `public/loader.webp`, a render of the view behind the start screen
 (`src/tour/Attract.js` says how to regenerate it), so the live village fades in exactly where the
-picture was.
+picture was. The link-preview image `public/og.jpg` is made by `node scripts/og.mjs` (with the dev
+server running); the page's `og:` and `twitter:` tags point at it on the live site.
 
 ## Settings
 
