@@ -8,7 +8,7 @@ import * as THREE from 'three/webgpu';
 import { Builder, mtx, box, cylinder, barrel, cart } from './Kit.js';
 import { growTree } from './TreeGen.js';
 import { variantSeed } from './Vegetation.js';
-import { heightAt, PARTY } from './Layout.js';
+import { heightAt, laneMask, HOLES, PARTY } from './Layout.js';
 import { mulberry32 } from '../util/noise.js';
 
 const TIMBER = 0x5a4230, OAK = 0x6e5238, ROPE = 0xb8a070;
@@ -27,16 +27,19 @@ function solid(g) {
 
 export class Party {
   /** `trees`: the planted trees (Vegetation.trees), to hang lanterns in the Party Tree. */
-  constructor(mats, trees = []) {
+  constructor(mats, trees = [], shrubs = null) {
     this.colliders = [];
     this.lamps = [];
     const rand = mulberry32(111);
     const B = new Builder();
     this._pavilion(B, rand);
+    this._tents(B, rand);
+    this._perimeter(B, rand);
     this._kegs(B);
     this._danceRing(B, rand);
     this._bandstand(B, rand);
     this._fireworksCart(B, rand);
+    if (shrubs) this._thicket(shrubs, rand);
     const pt = trees.find((t) => t.species === 'partyPine');
     if (pt) this._treeLanterns(B, pt, rand);
     const banner = this._banner(B);
@@ -82,106 +85,23 @@ export class Party {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // The pavilion: a hipped canvas roof on three king poles, open sides on a ring of short poles
-  // with guy ropes, a scalloped valance, and inside two long tables and the head table.
+  // The marquee: a big six-sided tent as on the film, its roof striped cream and red rising from a
+  // scalloped valance to a centre pole with a pennant; open sides on a ring of poles with guy ropes,
+  // and inside, the long tables laid for the feast.
 
   _pavilion(B, rand) {
-    const P = PARTY.pavilion, { hl, hw } = P;
+    const P = PARTY.pavilion, R = P.r;
     const yaw = Math.atan2(-P.uz, P.ux);
     const frame = mtx(P.x, P.y, P.z, 0, yaw, 0);
     const at = (x, y, z, rx, ry, rz) => frame.clone().multiply(mtx(x, y, z, rx, ry, rz));
     const world = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(frame);
-    const EAVE = 2.2, RISE = 2.3, OVER = 0.35, POLES = [-4.8, 0, 4.8];
-    // Roof height over local (x, z): a hipped tent whose ridge dips a little between the king poles.
-    const roofY = (x, z) => {
-      const side = 1 - Math.abs(z) / hw, hip = 1 - (Math.abs(x) - (hl - hw)) / hw;
-      let dip = 1;
-      for (let k = 0; k < POLES.length - 1; k++) {
-        const a = POLES[k], b = POLES[k + 1];
-        if (x > a && x < b) dip = 1 - 0.1 * Math.sin((Math.PI * (x - a)) / (b - a));
-      }
-      return EAVE + RISE * Math.min(side, hip) * (side < hip ? dip : 1);
-    };
-    // Canvas as a grid mesh; stripes run down the slopes.
-    {
-      const nx = Math.round(((hl + OVER) * 2) / 0.25), nz = Math.round(((hw + OVER) * 2) / 0.25);
-      const pos = [], uv = [], idx = [];
-      for (let j = 0; j <= nz; j++)
-        for (let i = 0; i <= nx; i++) {
-          const x = -hl - OVER + (i / nx) * (hl + OVER) * 2, z = -hw - OVER + (j / nz) * (hw + OVER) * 2;
-          pos.push(x, roofY(x, z), z);
-          const onSide = 1 - Math.abs(z) / hw < 1 - (Math.abs(x) - (hl - hw)) / hw;
-          uv.push((onSide ? x : z) * 0.4, 0);
-        }
-      for (let j = 0; j < nz; j++)
-        for (let i = 0; i < nx; i++) {
-          const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
-          idx.push(a, c, b, b, c, d);
-        }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.setIndex(idx);
-      g.computeVertexNormals();
-      B.add('cloth', g, frame, CANVAS);
+    this._roundTent(B, frame, { r: R, sides: 6, wall: 0, eave: 2.4, apex: 6.0, stripes: 0xd8a040, valance: 0xa8342a, open: true, rand, guys: true });
+    this.lamps.push(world(-2.5, 2.8, 0), world(2.5, 2.8, 0));
+    // Lanterns hung round the eaves inside.
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2 + Math.PI / 6, p = world(Math.cos(a) * (R - 1.2), 2.0, Math.sin(a) * (R - 1.2));
+      this._lantern(B, p, LANTERNS[k % LANTERNS.length], 1.3);
     }
-    // Scalloped valance round the edge, in red and cream.
-    {
-      const X = hl + OVER, Z = hw + OVER;
-      const corners = [[-X, -Z], [X, -Z], [X, Z], [-X, Z], [-X, -Z]];
-      const pos = [], uv = [], idx = [];
-      let s = 0, v = 0;
-      for (let c = 0; c < 4; c++) {
-        const [ax, az] = corners[c], [bx, bz] = corners[c + 1], len = Math.hypot(bx - ax, bz - az);
-        const n = Math.round(len / 0.1);
-        for (let i = 0; i <= n; i++) {
-          const t = i / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t, ss = s + t * len;
-          const top = roofY(x, z) + 0.02, drop = 0.26 + 0.1 * Math.abs(Math.sin((Math.PI * ss) / 0.6));
-          pos.push(x, top, z, x, top - drop, z);
-          uv.push(ss / 2.64, 0, ss / 2.64, 0);
-          if (i < n) idx.push(v, v + 1, v + 2, v + 2, v + 1, v + 3);
-          v += 2;
-        }
-        s += len;
-      }
-      const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-      g.setIndex(idx);
-      g.computeVertexNormals();
-      B.add('cloth', g, frame, 0xa8342a);
-    }
-    // King poles with finials and pennants.
-    for (const x of POLES) {
-      const top = roofY(x, 0);
-      B.add('wood', cylinder(0.08, 0.1, top + 0.5, 8), at(x, (top + 0.5) / 2 - 0.1, 0), OAK);
-      B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), at(x, top + 0.45, 0), 0xd8b23a);
-      B.add('cloth', solid(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -0.28, 0), new THREE.Vector3(0.75, -0.12, 0)]).setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0], 2)).setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3))), at(x, top + 0.4, 0, 0, rand() * 0.6 - 0.3, 0), 0xa8342a);
-      const w = world(x, 0, 0);
-      this.colliders.push({ x: w.x, z: w.z, r: 0.15 });
-    }
-    // Side poles under the eaves, each guyed out to a stake.
-    const ring = [];
-    for (let x = -hl; x <= hl + 0.01; x += (hl * 2) / 7) for (const z of [-hw, hw]) ring.push([x, z]);
-    for (let z = -hw + (hw * 2) / 4; z < hw - 0.01; z += (hw * 2) / 4) for (const x of [-hl, hl]) ring.push([x, z]);
-    for (const [x, z] of ring) {
-      const top = roofY(x, z);
-      B.add('wood', cylinder(0.045, 0.055, top + 0.3, 8), at(x, top / 2 - 0.1, z), OAK);
-      const out = Math.abs(z) === hw ? [0, Math.sign(z)] : [Math.sign(x), 0];
-      const stake = world(x + out[0] * 1.7, 0, z + out[1] * 1.7);
-      stake.y = heightAt(stake.x, stake.z);
-      B.add('wood', box(0.05, 0.3, 0.05), mtx(stake.x, stake.y + 0.1, stake.z), TIMBER);
-      this._rope(B, world(x, top - 0.05, z), stake.clone().setY(stake.y + 0.2), 0.02, 3);
-      const w = world(x, 0, z);
-      this.colliders.push({ x: w.x, z: w.z, r: 0.08 });
-    }
-    // Lanterns hung along the ridge inside.
-    for (let x = -6; x <= 6; x += 2.4) {
-      const top = roofY(x, 0) - 0.05, p = world(x, Math.min(top, 3.6) - 0.6, 0);
-      this._rope(B, world(x, top, 0), p.clone().setY(p.y + 0.2), 0, 1);
-      this._lantern(B, p, LANTERNS[Math.floor(rand() * LANTERNS.length)], 1.3);
-    }
-    this.lamps.push(world(-4, 2.6, 0), world(4, 2.6, 0));
 
     // The feast: two long tables down the pavilion, the head table across its lakeward end.
     const table = (cx, cz, len, alongX) => {
@@ -211,14 +131,15 @@ export class Party {
       const c = T(0, 0, 0).elements;
       this.colliders.push({ x: c[12], z: c[14], hx: alongX ? len / 2 + 0.3 : W / 2 + 0.7, hz: alongX ? W / 2 + 0.7 : len / 2 + 0.3, rot: yaw });
     };
-    table(-1.4, -1.8, 9, true);
-    table(-1.4, 1.8, 9, true);
-    table(5.9, 0, 5.2, false);
-    // Bilbo's chair at the head table, facing down the pavilion.
-    B.add('wood', box(0.5, 0.06, 0.5), at(6.6, 0.45, 0), OAK);
-    B.add('wood', box(0.08, 1.2, 0.56), at(6.88, 0.8, 0), OAK);
-    B.add('wood', new THREE.CylinderGeometry(0.28, 0.28, 0.08, 12, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI / 2), at(6.88, 1.4, 0), OAK);
-    for (const [x, z] of [[6.4, -0.2], [6.4, 0.2], [6.8, -0.2], [6.8, 0.2]]) B.add('wood', box(0.05, 0.45, 0.05), at(x, 0.22, z), TIMBER);
+    table(-0.9, -1.9, 6.8, true);
+    table(-0.9, 1.9, 6.8, true);
+    table(4.1, 0, 4.4, false);
+    // Bilbo's chair at the head table, facing down the marquee.
+    const cx = 4.8;
+    B.add('wood', box(0.5, 0.06, 0.5), at(cx, 0.45, 0), OAK);
+    B.add('wood', box(0.08, 1.2, 0.56), at(cx + 0.28, 0.8, 0), OAK);
+    B.add('wood', new THREE.CylinderGeometry(0.28, 0.28, 0.08, 12, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateY(Math.PI / 2), at(cx + 0.28, 1.4, 0), OAK);
+    for (const [x, z] of [[cx - 0.2, -0.2], [cx - 0.2, 0.2], [cx + 0.2, -0.2], [cx + 0.2, 0.2]]) B.add('wood', box(0.05, 0.45, 0.05), at(x, 0.22, z), TIMBER);
   }
 
   /**
@@ -229,36 +150,160 @@ export class Party {
     const skel = growTree('partyPine', variantSeed('partyPine', tree.variant));
     const m = new THREE.Matrix4().fromArray(tree.matrix);
     const spots = [];
-    for (const b of skel.branches) {
-      if (b.level < 1 || b.level > 2) continue;
-      for (const t of [0.3, 0.55, 0.8]) {
-        const f = t * (b.pts.length - 1), i = Math.min(b.pts.length - 2, Math.floor(f));
-        const p = b.pts[i].clone().lerp(b.pts[i + 1], f - i).applyMatrix4(m);
-        const up = (p.y - m.elements[13]);
-        if (up > 3.2 && up < 19) spots.push({ p, k: rand() });
-      }
+    const [tx, ty, tz] = [m.elements[12], m.elements[13], m.elements[14]];
+    // On the outer skin of the crown: out past the twig tips, where the foliage thins to sky.
+    for (const tip of skel.tips) {
+      const p = tip.pts[tip.pts.length - 1].clone().applyMatrix4(m);
+      const up = p.y - ty, dx = p.x - tx, dz = p.z - tz, out = Math.hypot(dx, dz);
+      if (up < 2.8 || up > 15 || out < 2) continue;
+      p.x += (dx / out) * 1.9; p.z += (dz / out) * 1.9;
+      spots.push({ p, k: rand() });
     }
     spots.sort((a, b) => a.k - b.k);
     const hung = [];
     for (const { p } of spots) {
-      if (hung.length >= 110 || hung.some((q) => q.distanceTo(p) < 1.3)) continue;
+      if (hung.length >= 110 || hung.some((q) => q.distanceTo(p) < 1.6)) continue;
       hung.push(p);
-      const drop = 0.35 + rand() * 0.5, q = p.clone().setY(p.y - drop);
+      const drop = 0.3 + rand() * 0.6, q = p.clone().setY(p.y - drop);
       this._rope(B, p, q.clone().setY(q.y + 0.2), 0, 1);
       this._lantern(B, q, LANTERNS[Math.floor(rand() * LANTERNS.length)], 1.5);
     }
     // They light the lawn under the tree.
-    const [x, y, z] = [m.elements[12], m.elements[13], m.elements[14]];
+    const [x, y, z] = [tx, ty, tz];
     for (let k = 0; k < 4; k++) {
       const a = (k / 4) * Math.PI * 2 + 0.4;
       this.lamps.push(new THREE.Vector3(x + Math.cos(a) * 5, y + 4.5, z + Math.sin(a) * 5));
     }
   }
 
+  /**
+   * A round (or `sides`-sided) tent at `frame`, standing on the ground: an optional canvas wall, a
+   * conical roof striped in `stripes` and cream from its scalloped eave up to a pole and pennant.
+   */
+  _roundTent(B, frame, { r, sides = 20, wall = 1.1, eave = wall, apex, stripes = null, valance = null, open = false, rand, guys = false, door = true }) {
+    const at = (x, y, z, rx, ry, rz) => frame.clone().multiply(mtx(x, y, z, rx, ry, rz));
+    const world = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(frame);
+    const ground = (x, z) => { const p = world(x, 0, z); return heightAt(p.x, p.z) - frame.elements[13]; };
+    const over = 0.35, rr = r + over;
+    // Roof: a cone, stripes running up it (uv.x in meters round the eave).
+    const roof = cylinder(0.12, rr, apex - eave, sides, true);
+    if (!stripes) solid(roof);
+    B.add('cloth', roof, at(0, (apex + eave) / 2, 0, 0, Math.PI / sides, 0), stripes || CANVAS);
+    // Corners of the tent's outline (matching the roof cone as turned above), at radius `rad`.
+    const vert = (k, rad) => { const q = (k / sides) * Math.PI * 2 + Math.PI / sides; return [rad * Math.sin(q), rad * Math.cos(q)]; };
+    // Scalloped valance round the eave, following the outline's edges.
+    const pos = [], uv = [], idx = [], per = sides > 12 ? 2 : 8;
+    let v = 0;
+    for (let k = 0; k < sides; k++) {
+      const [ax, az] = vert(k, rr), [bx, bz] = vert(k + 1, rr);
+      for (let i = 0; i <= per; i++) {
+        const t = i / per, x = ax + (bx - ax) * t, z = az + (bz - az) * t;
+        const drop = 0.26 + 0.12 * Math.abs(Math.sin(t * Math.PI * (per / 2)));
+        pos.push(x, eave + 0.02, z, x, eave - drop, z);
+        uv.push(SOLID, 0, SOLID, 0);
+        if (i < per) idx.push(v, v + 1, v + 2, v + 2, v + 1, v + 3);
+        v += 2;
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    B.add('cloth', g, frame, valance || stripes || 0xd8b060);
+    // Centre pole, finial and pennant.
+    B.add('wood', cylinder(0.07, 0.09, apex + 0.6, 8), at(0, (apex + 0.6) / 2 - 0.1, 0), OAK);
+    B.add('wood', new THREE.SphereGeometry(0.1, 8, 6), at(0, apex + 0.55, 0), 0xd8b23a);
+    const pen = new THREE.BufferGeometry();
+    pen.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, -0.3, 0, 0.9, -0.14, 0], 3));
+    pen.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3));
+    pen.setAttribute('uv', new THREE.Float32BufferAttribute([SOLID, 0, SOLID, 0, SOLID, 0], 2));
+    B.add('cloth', pen, at(0, apex + 0.45, 0, 0, rand() * 6, 0), stripes || 0xa8342a);
+    const c = world(0, 0, 0);
+    this.colliders.push({ x: c.x, z: c.z, r: open ? 0.15 : r + 0.1 });
+    // Walls: canvas round the sides down to the ground (open tents have poles only).
+    if (open) {
+      for (let k = 0; k < sides; k++) {
+        const [x, z] = vert(k, r), gy = ground(x, z), a = Math.atan2(z, x);
+        B.add('wood', cylinder(0.05, 0.06, eave - gy + 0.3, 8), at(x, (eave + gy) / 2 - 0.1, z), OAK);
+        const w = world(x, 0, z);
+        this.colliders.push({ x: w.x, z: w.z, r: 0.1 });
+        if (guys) {
+          const sx = Math.cos(a) * (r + 2), sz = Math.sin(a) * (r + 2), sy = ground(sx, sz);
+          B.add('wood', box(0.05, 0.3, 0.05), at(sx, sy + 0.1, sz), TIMBER);
+          this._rope(B, world(x, eave - 0.05, z), world(sx, sy + 0.2, sz), 0.02, 3);
+        }
+      }
+    } else {
+      const low = Math.min(...Array.from({ length: 8 }, (_, k) => ground(Math.cos(k * 0.785) * r, Math.sin(k * 0.785) * r))) - 0.2;
+      const h = eave - low;
+      const wallG = solid(cylinder(r, r, h, sides, true));
+      B.add('cloth', wallG, at(0, low + h / 2, 0), CANVAS);
+      if (door) {
+        // The door flaps tied back: a dark doorway with a pale edge.
+        B.add('hide', box(0.9, Math.min(1.5, h - 0.1), 0.05), at(0, low + Math.min(1.5, h - 0.1) / 2 + 0.05, r + 0.01), 0x2a2218);
+        for (const s2 of [-1, 1]) B.add('cloth', solid(box(0.18, Math.min(1.5, h - 0.1), 0.06)), at(s2 * 0.52, low + Math.min(1.5, h - 0.1) / 2 + 0.05, r + 0.04), 0xe8dfc8);
+      }
+    }
+  }
+
+  /** The bell tents dotted round the field, doors facing the dance ring. */
+  _tents(B, rand) {
+    for (const t of PARTY.tents) {
+      let y = Infinity;
+      for (let k = 0; k < 8; k++) y = Math.min(y, heightAt(t.x + Math.cos(k * 0.785) * t.r, t.z + Math.sin(k * 0.785) * t.r));
+      const yaw = Math.atan2(PARTY.dance.x - t.x, PARTY.dance.z - t.z);
+      const f = mtx(t.x, y, t.z, 0, yaw, 0);
+      this._roundTent(B, f, { r: t.r, sides: 18, wall: t.wall, eave: t.wall, apex: t.wall + t.r * 0.9, stripes: t.stripes, rand });
+      const lamp = new THREE.Vector3(0, 1.8, t.r + 0.4).applyMatrix4(f);
+      this._lantern(B, lamp, LANTERNS[Math.floor(rand() * LANTERNS.length)], 1.1);
+      this.lamps.push(lamp);
+    }
+  }
+
+  /** Strings of lanterns on poles round the whole party ground, open where the paths come in. */
+  _perimeter(B, rand) {
+    const pts = PARTY.ring;
+    const posts = pts.filter(([x]) => x !== null).map(([x, z]) => this._pole(B, x, z, 2.9, 0.06));
+    // Strung post to post, high over a path where one crosses (but not across a long gap).
+    for (let k = 0; k < posts.length; k++) {
+      const a = posts[k], b = posts[(k + 1) % posts.length];
+      if (a.distanceTo(b) > 13.5) continue;
+      const ta = a.clone().setY(a.y - 0.1), tb = b.clone().setY(b.y - 0.1), sag = 0.45;
+      this._rope(B, ta, tb, sag, 8);
+      const n = Math.max(2, Math.round(ta.distanceTo(tb) / 1.3));
+      for (let i = 1; i < n; i++) {
+        const q = this._along(ta, tb, sag, i / n);
+        this._lantern(B, q.setY(q.y - 0.18), LANTERNS[Math.floor(rand() * LANTERNS.length)], 0.8);
+      }
+      if (k % 2 === 0) this.lamps.push(a.clone().setY(a.y - 0.6));
+    }
+  }
+
+  /**
+   * The great mound of bushes between Bag End and the party, as in the view from Bilbo's bench: big
+   * rounded shrubs massed together on the slope below Hill Lane.
+   */
+  _thicket(shrubs, rand) {
+    const C = PARTY.thicket;
+    let placed = 0;
+    for (let tries = 0; tries < 600 && placed < 18; tries++) {
+      const a = rand() * Math.PI * 2, d = Math.sqrt(rand()) * C.r;
+      const x = C.x + Math.cos(a) * d, z = C.z + Math.sin(a) * d * 0.7;
+      const sc = 1.5 + rand() * 0.9, reach = sc * 1.1;
+      let clear = laneMask(x, z) < 0.01;
+      for (let k = 0; k < 8 && clear; k++) clear = laneMask(x + Math.cos(k * 0.785) * reach, z + Math.sin(k * 0.785) * reach) < 0.02;
+      if (!clear || HOLES.some((h) => Math.hypot(h.x - x, h.z - z) < h.width / 2 + reach + 2) || PARTY.inGround(x, z, 1.0)) continue;
+      shrubs.add(rand() < 0.6 ? 'broad' : 'bush', x, z, sc, rand() * 6.283, heightAt(x, z) - sc * 0.15);
+      this.colliders.push({ x, z, r: reach * 0.8 });
+      placed++;
+    }
+  }
+
   /** Kegs at the pavilion's uphill end: barrels on a rack and a couple stood on end. */
   _kegs(B) {
     const P = PARTY.pavilion, yaw = Math.atan2(-P.uz, P.ux);
-    const x = P.x - P.ux * (P.hl + 1.6), z = P.z - P.uz * (P.hl + 1.6);
+    const x = P.x - P.ux * (P.r + 1.8), z = P.z - P.uz * (P.r + 1.8);
     const frame = mtx(x, P.y, z, 0, yaw + Math.PI / 2, 0);
     const at = (px, py, pz, rx, ry, rz) => frame.clone().multiply(mtx(px, py, pz, rx, ry, rz));
     for (const s of [-1, 1]) B.add('wood', box(2.4, 0.12, 0.12), at(0, 0.25, s * 0.35), TIMBER);

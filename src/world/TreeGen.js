@@ -44,23 +44,20 @@ export const SPECIES = {
     leaves: { perTip: 7, size: 2.1, spread: 1.0, texture: 'needles', aspect: 0.75 },
     color: 0x3c5a2c,
   },
-  // The Party Tree: a huge old radiata pine (~28 m), taller than it is wide. A stout trunk splits
-  // into long grey limbs that rise steeply into an open, vase-shaped crown of sparse, dark needle
-  // tufts, with sky showing through; a few low limbs sweep out almost level and droop at the ends.
+  // The Party Tree: a huge old radiata pine, as it stands on the set: a short massive trunk, heavy
+  // limbs spreading from low down, and a broad, dense dome of dark foliage nearly as wide as it is
+  // tall, reaching almost to the grass at its skirts.
   partyPine: {
-    trunk: { length: 4.6, radius: 1.15, wobble: 0.05 },
+    trunk: { length: 4.2, radius: 1.25, wobble: 0.05 },
     levels: [
-      {
-        children: 10, start: 0.3, angle: 33, lenFactor: 1, radFactor: 0.46, wobble: 0.07, up: 0.015, droop: 0, segLen: 1.6, spread: 1,
-        // The first few limbs, lowest on the trunk, reach out sideways instead of up.
-        low: { count: 3, angle: 80, droop: 0.07, up: 0, length: 0.85 },
-      },
-      { children: 8, start: 0.3, angle: 40, lenFactor: 0.36, radFactor: 0.5, wobble: 0.2, up: 0.05, droop: 0.02, segLen: 1.0, spread: 1 },
-      { children: 4, start: 0.4, angle: 40, lenFactor: 0.5, radFactor: 0.55, wobble: 0.25, up: 0.08, droop: 0.02, segLen: 0.7, spread: 1 },
+      { children: 16, start: 0.3, angle: 44, lenFactor: 1, radFactor: 0.46, wobble: 0.1, up: 0.075, droop: 0.015, segLen: 1.2, spread: 1 },
+      { children: 10, start: 0.2, angle: 42, lenFactor: 0.45, radFactor: 0.5, wobble: 0.22, up: 0.06, droop: 0.03, segLen: 0.8, spread: 1 },
+      { children: 5, start: 0.3, angle: 38, lenFactor: 0.5, radFactor: 0.55, wobble: 0.25, up: 0.08, droop: 0.02, segLen: 0.6, spread: 1 },
     ],
-    firstLength: 19,
-    leaves: { perTip: 6, size: 2.3, spread: 1.0, texture: 'needles', aspect: 0.75 },
-    color: 0x3e5634,
+    firstLength: 15,
+    leaves: { perTip: 6, size: 3.2, spread: 1.7, texture: 'pineclump', aspect: 0.85 },
+    color: 0x2f4a26,
+    radial: [16, 10, 6, 4], // a big tree seen up close: rounder limbs
   },
   poplar: {
     trunk: { length: 17, radius: 0.32, wobble: 0.03 },
@@ -129,6 +126,24 @@ function paintLeafCluster(kind) {
         g.beginPath();
         g.moveTo(x, y);
         g.lineTo(x + Math.cos(b) * R * 0.9, y + Math.sin(b) * R * 0.9);
+        g.stroke();
+      }
+    }
+  } else if (kind === 'pineclump') {
+    // Radiata pine seen as a mass: dense rounded tufts of fine needles, overlapping into a solid clump
+    // with a ragged edge.
+    for (let t = 0; t < 26; t++) {
+      const a0 = rand() * Math.PI * 2, r0 = Math.sqrt(rand()) * W * 0.3;
+      const cx = W / 2 + Math.cos(a0) * r0, cy = H / 2 + Math.sin(a0) * r0 * 0.85;
+      const n = 70 + Math.floor(rand() * 30);
+      for (let i = 0; i < n; i++) {
+        const a = rand() * Math.PI * 2, len = 10 + rand() * 22;
+        const v = Math.round(120 + rand() * 135);
+        g.strokeStyle = `rgb(${v},${v},${v})`;
+        g.lineWidth = 2.2;
+        g.beginPath();
+        g.moveTo(cx, cy);
+        g.lineTo(cx + Math.cos(a) * len, cy + Math.sin(a) * len * 0.85);
         g.stroke();
       }
     }
@@ -360,7 +375,8 @@ export function buildTree(speciesName, seed) {
   const lods = LODS.map((L) => {
     // Regrown per level so each draws the same random sequence (and so the same tree).
     const tree = growTree(speciesName, seed);
-    const wood = tubeGeometry(tree.branches.filter((b) => b.level <= L.maxLevel), (level) => L.radial[level] ?? 3);
+    const radial = SPECIES[speciesName].radial;
+    const wood = tubeGeometry(tree.branches.filter((b) => b.level <= L.maxLevel), (level) => Math.max(L.radial[level] ?? 3, radial && L === LODS[0] ? radial[level] ?? 3 : 0));
     return { wood, leaves: leafGeometry(tree, L.keep, L.grow) };
   });
   const { wood, leaves } = lods[0];

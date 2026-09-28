@@ -31,7 +31,7 @@ const STOPS = [
   {
     at: [16, -57], face: [-3, -79], pitch: 0.14, hold: [7, 4.5], hour: 17.3, pan: -0.3,
     quote: ['When Mr. Bilbo Baggins of Bag End announced that he would shortly be celebrating his eleventy-first birthday with a party of special magnificence, there was much talk and excitement in Hobbiton.', 'The Fellowship of the Ring'],
-    title: 'The Party Field', line: 'Laid out for Bilbo’s eleventy-first birthday: the pavilion, the dance ring and the bandstand.',
+    title: 'The Party Field', line: 'Laid out for Bilbo’s eleventy-first birthday: the marquee, the tents, the dance ring and the lanterns.',
   },
   {
     at: [-4, -47], face: [-18, -61], pitch: 0.05, hold: [6, 4], hour: 17.5, pan: 0.3,
@@ -80,7 +80,7 @@ const INN = {
 };
 // The last shot: Hobbiton by night from above the Party Tree, its lanterns in the foreground.
 const FINALE = {
-  pts: [[45, 17.4, -43], [50, 19.9, -46]], looks: [[-5, 2, -110], [-5, 2, -110]], hour: 21.3, land: [52, -40],
+  pts: [[55, 18.4, -47], [60, 21, -50]], looks: [[-5, 2, -106], [-5, 2, -106]], hour: 21.3, land: [52, -40],
   step: 'The end of the tour', title: 'Goodnight, Hobbiton', line: 'The lamps are lit, and the Shire settles in for the night.',
 };
 

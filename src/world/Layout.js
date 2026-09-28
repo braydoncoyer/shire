@@ -457,25 +457,26 @@ export const GREEN_DRAGON = (() => {
 // and Gandalf's fireworks cart down by the lake. The pavilion runs along the path across the field.
 export const PARTY = (() => {
   const ux = 0.511, uz = -0.859; // along the path from the lake up to Hill Lane
-  const pav = { x: -5, z: -80, ux, uz, hl: 8, hw: 4 };
+  const pav = { x: -5, z: -80, ux, uz, hl: 7, hw: 7, r: 7 };
   pav.poly = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [pav.x + ux * a * pav.hl - uz * b * pav.hw, pav.z + uz * a * pav.hl + ux * b * pav.hw]);
   let sum = 0, n = 0;
   for (let a = -1; a <= 1; a += 0.25) for (let b = -1; b <= 1; b += 0.25) {
     sum += naturalHeight(pav.x + ux * a * pav.hl - uz * b * pav.hw, pav.z + uz * a * pav.hl + ux * b * pav.hw); n++;
   }
   pav.y = sum / n;
-  return {
-    ux, uz, pavilion: pav,
-    dance: { x: 5, z: -70, r: 5.5 },
-    bandstand: { x: 9.1, z: -76.9 },
-    banner: { x: 16.6, z: -73.6 },
-    cart: { x: 34, z: -30 },
+  const dance = { x: 5, z: -70, r: 5.5 }, bandstand = { x: 9.1, z: -76.9 }, banner = { x: 16.6, z: -73.6 };
+  // The party ground: an oval over the field, from the marquee down toward the Party Tree.
+  const ground = { x: 7, z: -69, rx: 27, rz: 21, rot: 0.55 };
+  const inGround = (x, z, k = 1) => {
+    const dx = x - ground.x, dz = z - ground.z, c = Math.cos(ground.rot), s = Math.sin(ground.rot);
+    return ((dx * c + dz * s) / (ground.rx * k)) ** 2 + ((-dx * s + dz * c) / (ground.rz * k)) ** 2 < 1;
   };
+  return { ux, uz, pavilion: pav, dance, bandstand, banner, cart: { x: 34, z: -30 }, ground, inGround, tents: [], ring: [], thicket: { x: -19, z: -87, r: 9 } };
 })();
 
 const PADS = [
   { poly: building("Sandyman's Mill").poly, r0: 0.8, r1: 4, y: MILL.y },
-  { poly: PARTY.pavilion.poly, r0: 1.2, r1: 6, y: PARTY.pavilion.y },
+  { poly: PARTY.pavilion.poly, r0: 0.5, r1: 4.5, y: PARTY.pavilion.y },
   { poly: GREEN_DRAGON.poly, r0: 2.5, r1: 9, y: GREEN_DRAGON.y },
   { poly: GREEN_DRAGON.shed, r0: 1.5, r1: 5, y: GREEN_DRAGON.shedY },
 ].map((p) => {
@@ -1007,7 +1008,7 @@ function nearestOnLanes(x, z, lanes) {
     }
     if (Math.abs(c.x) > 270 || Math.abs(c.z) > 270) continue;
     // Clear of the Party Tree's lawn and Bilbo's party.
-    if (Math.hypot(c.x - ptX, c.z - ptZ) < 24 || Math.hypot(c.x - PARTY.pavilion.x, c.z - PARTY.pavilion.z) < 16 || Math.hypot(c.x - PARTY.dance.x, c.z - PARTY.dance.z) < 12) continue;
+    if (Math.hypot(c.x - ptX, c.z - ptZ) < 24 || PARTY.inGround(c.x, c.z, 1.12)) continue;
     // Clear of the view up the village to Bag End.
     { const v = vistaDist(c.x, c.z); if ((v.d < 9 + v.t * 0.04 && v.t < 118) || Math.hypot(c.x - VISTA.ax, c.z - VISTA.az) < 26) continue; }
     // Clear of the Green Dragon, its outbuilding and the Mill, mound and all.
@@ -1172,3 +1173,47 @@ export function normalAt(x, z, e = 0.75) {
 export const LANE_TEXTURE = {
   res: RES, n: N, dist: laneDist, width: laneWidth, stream: streamDist, yard: yardGrid, bed: bedGrid,
 };
+
+// Bilbo's party: the tents and the lantern poles round the ground, placed once the lanes and holes are.
+{
+  const BAGSHOT = [[-23, -60], [-11, -60], [-3, -57]]; // the mapped holes on the row below the field
+  const nearLane = (x, z, r) => {
+    for (let a = 0; a < Math.PI * 2; a += 0.5) if (laneMask(x + Math.cos(a) * r, z + Math.sin(a) * r) > 0.02) return true;
+    return laneMask(x, z) > 0.02;
+  };
+  // Bell tents dotted over the ground, clear of the paths, the marquee, the dance ring and each other.
+  const rand = mulberry32(111111);
+  const { pavilion: pav, dance, bandstand, banner, ground, inGround, tents, ring } = PARTY;
+  for (let tries = 0; tries < 4000 && tents.length < 7; tries++) {
+    const x = ground.x + (rand() - 0.5) * ground.rx * 2, z = ground.z + (rand() - 0.5) * ground.rx * 2;
+    const r = 1.9 + rand() * 0.7;
+    if (!inGround(x, z, 0.92) || nearLane(x, z, r + 1.4)) continue;
+    if (Math.hypot(x - pav.x, z - pav.z) < pav.r + r + 3 || Math.hypot(x - dance.x, z - dance.z) < dance.r + r + 2.5) continue;
+    if (Math.hypot(x - bandstand.x, z - bandstand.z) < r + 4 || Math.hypot(x - banner.x, z - banner.z) < r + 3.5) continue;
+    // (and clear of the spot the tour stops to look over the party from)
+    if (Math.hypot(x - 16, z + 57) < r + 5) continue;
+    if (Math.hypot(x - ptX, z - ptZ) < 16 + r || BAGSHOT.some(([a, b]) => Math.hypot(x - a, z - b) < 12)) continue;
+    if (tents.some((t) => Math.hypot(t.x - x, t.z - z) < t.r + r + 3.5)) continue;
+    if (HOLES.some((h) => Math.hypot(h.x - x, h.z - z) < h.width / 2 + r + 4)) continue;
+    let lo = Infinity, hi = -Infinity;
+    for (let a = 0; a < 6.28; a += 0.8) { const h = naturalHeight(x + Math.cos(a) * r, z + Math.sin(a) * r); lo = Math.min(lo, h); hi = Math.max(hi, h); }
+    if (hi - lo > 1.1) continue;
+    tents.push({ x, z, r, wall: 1.1 + rand() * 0.25, stripes: rand() < 0.35 ? [0xa8342a, 0xc8902a, 0x2f6b3a][Math.floor(rand() * 3)] : null });
+  }
+  // Lantern poles round the edge of the ground, every 6 m or so; a gap (null) wherever a path comes in.
+  const perim = Math.PI * (3 * (ground.rx + ground.rz) - Math.sqrt((3 * ground.rx + ground.rz) * (ground.rx + 3 * ground.rz)));
+  const nPosts = Math.round(perim / 4.5);
+  for (let k = 0; k < nPosts; k++) {
+    const a = (k / nPosts) * Math.PI * 2, c = Math.cos(ground.rot), s = Math.sin(ground.rot);
+    // Pulled in from the oval's edge until clear of the paths that border the field.
+    let x = null, z = null;
+    for (let k2 = 1; k2 >= 0.78 && x === null; k2 -= 0.03) {
+      const ex = Math.cos(a) * ground.rx * k2, ez = Math.sin(a) * ground.rz * k2;
+      const px = ground.x + ex * c - ez * s, pz = ground.z + ex * s + ez * c;
+      const blocked = nearLane(px, pz, 1.3) || lakeDist(px, pz) < 3 || Math.hypot(px - ptX, pz - ptZ) < 13 || HOLES.some((h) => Math.hypot(h.x - px, h.z - pz) < h.width / 2 + 3)
+        || Math.hypot(px - pav.x, pz - pav.z) < pav.r + 2.5 || tents.some((t) => Math.hypot(t.x - px, t.z - pz) < t.r + 1.5);
+      if (!blocked) { x = px; z = pz; }
+    }
+    ring.push([x, z]);
+  }
+}

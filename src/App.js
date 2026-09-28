@@ -103,14 +103,14 @@ export class App {
     this.boundaries = new Boundaries(this.mats, this.shrubs);
     scene.add(this.boundaries.group);
     setLayer(this.boundaries.group, LAYERS.DETAIL);
+    this.party = new Party(this.mats, this.vegetation.trees, this.shrubs);
+    scene.add(this.party.group);
     scene.add(this.shrubs.build());
     setLayer(this.shrubs.group, LAYERS.DETAIL);
     this.buildings = new Buildings(this.mats);
     scene.add(this.buildings.group);
     this.surroundings = new Surroundings(this.mats);
     scene.add(this.surroundings.group);
-    this.party = new Party(this.mats, this.vegetation.trees);
-    scene.add(this.party.group);
     this.lanePosts = new LanePosts(this.mats, [...this.holes.lanterns, ...this.greenDragon.lamps, ...this.buildings.lamps, ...this.surroundings.lamps, ...this.party.lamps]);
     scene.add(this.lanePosts.group);
     // Outdoor materials darken and shine in the rain (the inn's interior has its own copies).

@@ -64,7 +64,7 @@ export function planTrees() {
 
   // Landmarks: the Party Tree (a pine) and the oak above Bag End.
   const pt = LANDMARKS.partyTree, bo = LANDMARKS.bagEndOak;
-  add('partyPine', pt.x, pt.z, 1.4, 0);
+  add('partyPine', pt.x, pt.z, 1.35, 0);
   add('bagEndOak', bo.x, bo.z, 1.25, 0);
   // The rounded hill beyond Bag End: a lone tree on its crown, pines along its left shoulder.
   const bh = LANDMARKS.backHill;
